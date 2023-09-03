@@ -1,4 +1,4 @@
-wget https://github.com/thefather12/WS-EPRO/main/epro-ws/epro-ws; chmod +x /etc/WS-EPRO/sbin/epro-ws
+wget https://github.com/thefather12/WS-EPRO/main/epro-ws/epro-ws; chmod +x WS-EPRO; /epro-ws
 
 
 
