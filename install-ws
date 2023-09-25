@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Obfuscate by @CesarHackGray
-# Contacta https://t.me/CesarGray
-# Channel: https://www.youtube.com/channel/UCjs0N8PbEo-se0r_4O_svNQ
+# Obfuscate by @THEFATHER12
+# Contacta https://t.me/THEFATHER12
+# 
 #
 #
 CesarHackGray=$(mktemp)
