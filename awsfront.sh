@@ -2,7 +2,7 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 3.0: Solución de errores de flujo en el menú (Toggle/Eliminar).
+# Versión 4.0: Solución de desbordamiento de JSON en 'Crear Distribución'.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -184,7 +184,7 @@ ver_estado_distribucion() {
     fi
 }
 
-# 3. Crear una distribución
+# 3. Crear una distribución (CORREGIDA)
 crear_distribucion() {
     echo "--- Crear Nueva Distribución (Requiere un archivo de configuración) ---"
     echo "Necesitas un archivo JSON que contenga la estructura completa de 'DistributionConfig'."
@@ -196,16 +196,36 @@ crear_distribucion() {
     fi
     
     echo "Creando distribución..."
-    "$AWS_CLI" cloudfront create-distribution --distribution-config "file://$INPUT_FILE"
     
-    if [ $? -eq 0 ]; then
-        echo "✅ Distribución creada con éxito. El estado inicial será 'InProgress'."
+    # Capturar la salida en un archivo temporal para que no inunde la terminal
+    local TEMP_OUTPUT="/tmp/create_dist_output_$$.json"
+    
+    # Ejecutar el comando, capturando la salida y el código de retorno
+    "$AWS_CLI" cloudfront create-distribution --distribution-config "file://$INPUT_FILE" > "$TEMP_OUTPUT"
+    local EXIT_CODE=$?
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        # Extraer el nuevo ID de la distribución
+        local NEW_DIST_ID=$(cat "$TEMP_OUTPUT" | "$JQ_CLI" -r '.Distribution.Id')
+        
+        echo "✅ Distribución creada con éxito."
+        echo "=========================================================="
+        echo "ID de Distribución: $NEW_DIST_ID"
+        echo "El estado inicial es 'InProgress' (tardará unos minutos)."
+        echo "=========================================================="
     else
         echo "❌ Error al crear la distribución. Revisa el formato JSON y los permisos."
+        # Mostrar el error de AWS si el archivo temporal tiene contenido (el error JSON)
+        if [ -s "$TEMP_OUTPUT" ]; then
+            echo "Detalle del error (verifique los permisos o el JSON):"
+            cat "$TEMP_OUTPUT"
+        fi
     fi
+    
+    rm -f "$TEMP_OUTPUT"
 }
 
-# 4. Activar/Desactivar Distribución (Ajustada para recibir ID desde eliminar_distribucion)
+# 4. Activar/Desactivar Distribución 
 toggle_distribucion() {
     # Si se llama desde la función eliminar_distribucion, toma el ID del argumento $1
     # Si se llama desde el menú, pide el ID
@@ -245,7 +265,7 @@ toggle_distribucion() {
     fi
 }
 
-# 5. Eliminar una Distribución (Ajustada para llamar a toggle_distribucion con ID)
+# 5. Eliminar una Distribución 
 eliminar_distribucion() {
     read -p "Introduce el ID de la Distribución a ELIMINAR: " DIST_ID
     
