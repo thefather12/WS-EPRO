@@ -2,7 +2,8 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 4.0: Solución de desbordamiento de JSON en 'Crear Distribución'.
+# Versión 5.0: Solución de desbordamiento de JSON en 'Crear Distribución' (Opción 5) 
+# y 'Activar/Desactivar Distribución' (Opción 3).
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -184,7 +185,7 @@ ver_estado_distribucion() {
     fi
 }
 
-# 3. Crear una distribución
+# 3. Crear una distribución (CORREGIDA)
 crear_distribucion() {
     echo "--- Crear Nueva Distribución (Requiere un archivo de configuración) ---"
     echo "Necesitas un archivo JSON que contenga la estructura completa de 'DistributionConfig'."
@@ -225,7 +226,7 @@ crear_distribucion() {
     rm -f "$TEMP_OUTPUT"
 }
 
-# 4. Activar/Desactivar Distribución 
+# 4. Activar/Desactivar Distribución (CORREGIDA)
 toggle_distribucion() {
     # Si se llama desde la función eliminar_distribucion, toma el ID del argumento $1
     # Si se llama desde el menú, pide el ID
@@ -252,16 +253,25 @@ toggle_distribucion() {
         "$JQ_CLI" ".Enabled = $NEW_STATUS" "$CONFIG_FILE" > /tmp/updated_config.json && mv /tmp/updated_config.json "$CONFIG_FILE"
         
         # Actualizar la distribución
+        local TEMP_OUTPUT_TOGGLE="/tmp/update_dist_output_$$.json"
+        
         "$AWS_CLI" cloudfront update-distribution \
             --id "$DIST_ID" \
             --distribution-config "file://$CONFIG_FILE" \
-            --if-match "$CURRENT_ETAG"
-        
-        if [ $? -eq 0 ]; then
+            --if-match "$CURRENT_ETAG" > "$TEMP_OUTPUT_TOGGLE"
+
+        local EXIT_CODE=$?
+
+        if [ $EXIT_CODE -eq 0 ]; then
             echo "✅ $ACTION completada. El estado de 'Deployed' cambiará pronto."
         else
             echo "❌ Error al modificar la distribución. El estado de la distribución debe ser 'Deployed' para actualizarla."
+            if [ -s "$TEMP_OUTPUT_TOGGLE" ]; then
+                echo "Detalle del error (verifique el ETag o el estado):"
+                cat "$TEMP_OUTPUT_TOGGLE"
+            fi
         fi
+        rm -f "$TEMP_OUTPUT_TOGGLE"
     fi
 }
 
@@ -288,6 +298,7 @@ eliminar_distribucion() {
         read -p "¿Estás ABSOLUTAMENTE seguro de ELIMINAR? Escribe 'ELIMINAR': " FINAL_CONFIRM
         
         if [ "$FINAL_CONFIRM" = "ELIMINAR" ]; then
+            # Captura la salida de delete-distribution (que también puede ser verbosa)
             "$AWS_CLI" cloudfront delete-distribution \
                 --id "$DIST_ID" \
                 --if-match "$CURRENT_ETAG"
