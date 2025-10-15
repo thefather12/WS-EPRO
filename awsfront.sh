@@ -185,7 +185,7 @@ ver_estado_distribucion() {
     fi
 }
 
-# 3. Crear una distribución
+# 3. Crear una distribución (CORREGIDA PARA CALLER REFERENCE DINÁMICA)
 crear_distribucion() {
     echo "--- Crear Nueva Distribución (Requiere un archivo de configuración) ---"
     echo "Necesitas un archivo JSON que contenga la estructura completa de 'DistributionConfig'."
@@ -196,27 +196,34 @@ crear_distribucion() {
         return
     fi
     
-    echo "Creando distribución..."
+    # 1. Crear una nueva CallerReference única
+    NEW_CALLER_REF="SCRIPT-CREACION-$(date +%Y%m%d%H%M%S)"
     
-    # Capturar la salida en un archivo temporal para que no inunde la terminal
+    # 2. Inyectar la nueva CallerReference en el archivo JSON
+    # Se crea una copia modificada para usarla en la creación
+    "$JQ_CLI" ".CallerReference = \"$NEW_CALLER_REF\"" "$INPUT_FILE" > /tmp/temp_create_config_$$.json
+    
+    echo "Creando distribución con CallerReference: $NEW_CALLER_REF..."
+    
     local TEMP_OUTPUT="/tmp/create_dist_output_$$.json"
     
-    # Ejecutar el comando, capturando la salida y el código de retorno
-    "$AWS_CLI" cloudfront create-distribution --distribution-config "file://$INPUT_FILE" > "$TEMP_OUTPUT"
+    # Ejecutar el comando usando el archivo temporal modificado
+    "$AWS_CLI" cloudfront create-distribution --distribution-config "file:///tmp/temp_create_config_$$.json" > "$TEMP_OUTPUT"
     local EXIT_CODE=$?
 
+    # Limpiar el archivo temporal de configuración modificado
+    rm -f /tmp/temp_create_config_$$.json
+
     if [ $EXIT_CODE -eq 0 ]; then
-        # Extraer el nuevo ID de la distribución
         local NEW_DIST_ID=$(cat "$TEMP_OUTPUT" | "$JQ_CLI" -r '.Distribution.Id')
         
         echo "✅ Distribución creada con éxito."
         echo "=========================================================="
         echo "ID de Distribución: $NEW_DIST_ID"
-        echo "El estado inicial es 'InProgress' (tardará unos minutos)."
+        echo "El estado inicial es 'InProgress'."
         echo "=========================================================="
     else
         echo "❌ Error al crear la distribución. Revisa el formato JSON y los permisos."
-        # Mostrar el error de AWS si el archivo temporal tiene contenido (el error JSON)
         if [ -s "$TEMP_OUTPUT" ]; then
             echo "Detalle del error (verifique los permisos o el JSON):"
             cat "$TEMP_OUTPUT"
