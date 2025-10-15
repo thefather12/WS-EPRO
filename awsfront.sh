@@ -185,7 +185,7 @@ ver_estado_distribucion() {
     fi
 }
 
-# 3. Crear una distribución (CORREGIDA)
+# 3. Crear una distribución
 crear_distribucion() {
     echo "--- Crear Nueva Distribución (Requiere un archivo de configuración) ---"
     echo "Necesitas un archivo JSON que contenga la estructura completa de 'DistributionConfig'."
