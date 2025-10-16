@@ -128,6 +128,38 @@ configurar_aws() {
 }
 
 # ----------------------------------------------------------------------
+# FUNCIÓN DE DESCARGA DE CONFIGURACIÓN JSON (NUEVA)
+# ----------------------------------------------------------------------
+
+descargar_json_config() {
+    # **** ¡IMPORTANTE! REEMPLAZA ESTA URL CON LA RUTA RAW DE TU ARCHIVO JSON EN GITHUB ****
+    local JSON_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/heads/main/creacion.json"
+    local TARGET_FILE="$HOME/creacion.json"
+    
+    echo "========================================="
+    echo "  -> Descargando Archivo de Configuración JSON"
+    echo "     Ruta esperada: $TARGET_FILE"
+    echo "========================================="
+
+    if [ -f "$TARGET_FILE" ]; then
+        echo "✅ Archivo JSON de configuración ya existe. Omitiendo descarga."
+        # Notificamos al usuario la ruta donde se encuentra el archivo
+        echo "   (Usar '$TARGET_FILE' en la Opción 5)"
+        return 0
+    fi
+    
+    echo "Descargando JSON desde $JSON_URL..."
+    curl -s -o "$TARGET_FILE" "$JSON_URL"
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Archivo JSON descargado con éxito."
+        echo "   (Usar '$TARGET_FILE' en la Opción 5)"
+    else
+        echo "❌ Error al descargar el archivo JSON. Verifique la URL de origen ($JSON_URL)."
+    fi
+}
+
+# ----------------------------------------------------------------------
 # FUNCIONES DE CLOUDFRONT 
 # ----------------------------------------------------------------------
 
@@ -392,6 +424,9 @@ start_script() {
 
     # 3. Configurar Credenciales
     configurar_aws
+    
+        # 4. Descargar el archivo JSON de configuración (¡NUEVA LLAMADA!)
+    descargar_json_config 
 
     # 4. Iniciar Bucle Principal del Menú
     while true; do
