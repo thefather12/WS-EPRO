@@ -112,5 +112,4 @@
         "IsIPV6Enabled": false,
         "ContinuousDeploymentPolicyId": "",
         "Staging": false
-    }
 }
