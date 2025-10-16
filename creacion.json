@@ -8,7 +8,7 @@
             "Quantity": 1,
             "Items": [
                 {
-                    "Id": "nueva.multiservicio.xyz-mgrhya1vr9q",
+                    "Id": "Origen-Principal",
                     "DomainName": "nueva.multiservicio.xyz",
                     "OriginPath": "",
                     "CustomHeaders": {
@@ -41,7 +41,7 @@
             "Quantity": 0
         },
         "DefaultCacheBehavior": {
-            "TargetOriginId": "nueva.multiservicio.xyz-mgrhya1vr9q",
+            "TargetOriginId": "Origen-Principal",
             "TrustedSigners": {
                 "Enabled": false,
                 "Quantity": 0
