@@ -217,25 +217,38 @@ ver_estado_distribucion() {
     fi
 }
 
-# 3. Crear una distribución (CORREGIDA PARA CALLER REFERENCE DINÁMICA)
+# 3. Crear una distribución (CORREGIDA PARA CALLER REFERENCE DINÁMICA y DOMINIO DINÁMICO)
 crear_distribucion() {
-    echo "--- Crear Nueva Distribución (Requiere un archivo de configuración) ---"
-    echo "Necesitas un archivo JSON que contenga la estructura completa de 'DistributionConfig'."
-    read -p "Introduce la ruta al archivo JSON de configuración (ej: ~/mi_config.json): " INPUT_FILE
+    echo "--- Crear Nueva Distribución (Avanzado) ---"
+    echo "Necesitas un archivo JSON base para 'DistributionConfig'."
+    
+    # 1. Solicitar la ruta del archivo JSON
+    read -p "Introduce la ruta al archivo JSON de configuración (ej: ~/mi_config_crear.json): " INPUT_FILE
 
     if [ ! -f "$INPUT_FILE" ]; then
         echo "ERROR: Archivo no encontrado."
         return
     fi
     
-    # 1. Crear una nueva CallerReference única
+    # 2. Solicitar el Dominio de Origen Dinámico
+    echo "--------------------------------------------------------"
+    read -p "Introduce el **Dominio de Origen** (ej: api.servidor.com): " ORIGIN_DOMAIN
+    echo "--------------------------------------------------------"
+    
+    if [ -z "$ORIGIN_DOMAIN" ]; then
+        echo "ERROR: El Dominio de Origen no puede estar vacío. Abortando."
+        return
+    fi
+    
+    # 3. Crear una nueva CallerReference única
     NEW_CALLER_REF="SCRIPT-CREACION-$(date +%Y%m%d%H%M%S)"
     
-    # 2. Inyectar la nueva CallerReference en el archivo JSON
-    # Se crea una copia modificada para usarla en la creación
-    "$JQ_CLI" ".CallerReference = \"$NEW_CALLER_REF\"" "$INPUT_FILE" > /tmp/temp_create_config_$$.json
+    # 4. Inyectar CallerReference y el nuevo Dominio en el archivo JSON
+    # Creamos un archivo temporal modificando dos campos: CallerReference y DomainName del primer origen.
+    "$JQ_CLI" ".CallerReference = \"$NEW_CALLER_REF\" | .Origins.Items[0].DomainName = \"$ORIGIN_DOMAIN\"" "$INPUT_FILE" > /tmp/temp_create_config_$$.json
     
     echo "Creando distribución con CallerReference: $NEW_CALLER_REF..."
+    echo "Origen de destino configurado a: $ORIGIN_DOMAIN"
     
     local TEMP_OUTPUT="/tmp/create_dist_output_$$.json"
     
@@ -252,6 +265,7 @@ crear_distribucion() {
         echo "✅ Distribución creada con éxito."
         echo "=========================================================="
         echo "ID de Distribución: $NEW_DIST_ID"
+        echo "El dominio de origen es: $ORIGIN_DOMAIN"
         echo "El estado inicial es 'InProgress'."
         echo "=========================================================="
     else
