@@ -12,8 +12,8 @@ TEMP_DOWNLOAD_DIR="/tmp/aws-cli-install"
 
 # Variables del Panel de Licencias (¡ACTUALIZA ESTAS URLs CON TU HOSTING!)
 GENERATED_KEY_FILE="$HOME/.script_key.txt"
-PANEL_URL_REGISTER="https://tudominio.com/licensing/register.php"
-PANEL_URL_VALIDATE="https://tudominio.com/licensing/validate.php"
+PANEL_URL_REGISTER="https://panelhtv.store/keyvalidator/register.php"
+PANEL_URL_VALIDATE="https://panelhtv.store/keyvalidator/validate.php"
 
 # Variables de Estado
 SCRIPT_KEY=""
