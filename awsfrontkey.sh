@@ -1,19 +1,20 @@
 #!/bin/bash
 # Script de Administración Avanzada de Distribuciones de CloudFront
+# Implementación: Seguridad por Licencia (Panel PHP/MySQL) y Dominio Dinámico.
 
 # ====================================================================
 # CONFIGURACIÓN DE RUTAS Y DEPENDENCIAS
 # ====================================================================
 
-# Ruta para la AWS CLI y JQ (Se verifican y actualizan en check_dependencies)
+# Ruta para la AWS CLI y JQ 
 AWS_CLI="aws"
 JQ_CLI="jq"
 TEMP_DOWNLOAD_DIR="/tmp/aws-cli-install"
 
-# Variables del Panel de Licencias (¡ACTUALIZA ESTAS URLs CON TU HOSTING!)
+# Variables del Panel de Licencias (¡¡¡IMPORTANTE!!! ACTUALIZA ESTAS URLs CON TU HOSTING)
 GENERATED_KEY_FILE="$HOME/.script_key.txt"
-PANEL_URL_REGISTER="https://panelhtv.store/keyvalidator/register.php"
-PANEL_URL_VALIDATE="https://panelhtv.store/keyvalidator/validate.php"
+PANEL_URL_REGISTER="https://panelhtv.store//licensing/register.php" # Endpoint para registrar la clave
+PANEL_URL_VALIDATE="https://panelhtv.store/licensing/validate.php" # Endpoint para verificar el estado
 
 # Variables de Estado
 SCRIPT_KEY=""
@@ -42,13 +43,10 @@ check_dependencies() {
     # Check AWS CLI
     if ! command -v "$AWS_CLI" &> /dev/null; then
         echo "⚠️ AWS CLI no encontrado. Necesitas instalarlo manualmente y configurarlo."
-        # No salimos, solo avisamos. El usuario debe configurarlo.
     else
         echo "✅ AWS CLI encontrado."
     fi
 }
-
-# --- NUEVA LÓGICA DE LICENCIA ---
 
 # Función para generar o cargar la Key
 get_or_generate_key() {
@@ -57,7 +55,7 @@ get_or_generate_key() {
         export SCRIPT_KEY=$(cat "$GENERATED_KEY_FILE")
         echo "✅ Clave de licencia existente cargada."
     else
-        # Generar nueva clave única (usando fecha y md5)
+        # Generar nueva clave única (32 caracteres hexadecimales)
         export SCRIPT_KEY=$(date +%s%N | md5sum | head -c 32)
         echo "$SCRIPT_KEY" > "$GENERATED_KEY_FILE"
         chmod 600 "$GENERATED_KEY_FILE"
@@ -91,10 +89,10 @@ verificar_licencia() {
         sleep 1
         return 0
     elif [ "$VALIDATE_CODE" = "403" ]; then
-        echo "❌ Licencia PENDIENTE O DENEGADA. Procediendo a registrar/re-registrar..."
+        echo "❌ Licencia PENDIENTE O DENEGADA. Intentando registrar/re-registrar..."
     else
         echo "⚠️ Error de comunicación con el servidor de validación. Código HTTP: $VALIDATE_CODE"
-        echo "   (Verifique la URL del panel: $PANEL_URL_VALIDATE)"
+        echo "   (Verifique que el panel PHP esté funcionando en: $PANEL_URL_VALIDATE)"
         exit 1
     fi
     
@@ -105,7 +103,7 @@ verificar_licencia() {
         --data "key=$SCRIPT_KEY" \
         "$PANEL_URL_REGISTER")
 
-    if [ "$REGISTER_CODE" = "201" ] || [ "$REGISTER_CODE" = "409" ]; then
+    if [ "$REGISTER_CODE" = "201" ] || [ "$REGISTER_CODE" = "409" ]; then # 201: Creado, 409: Duplicado (ya está en PENDING)
         echo ""
         echo "=========================================================="
         echo "⏳ SOLICITUD ENVIADA CON ÉXITO. Tu clave está PENDIENTE."
@@ -115,6 +113,7 @@ verificar_licencia() {
         exit 1
     else
         echo "❌ ERROR FATAL al intentar registrar la clave. Código HTTP: $REGISTER_CODE"
+        echo "   (Verifique el archivo register.php en su hosting.)"
         exit 1
     fi
 }
@@ -128,7 +127,7 @@ pausa() {
 # 2. FUNCIONES DE ADMINISTRACIÓN DE CLOUDFRONT
 # ====================================================================
 
-# 3. Crear una distribución (AÑADIDA LÓGICA DE DOMINIO DINÁMICO)
+# Crear una distribución (Con Dominio Dinámico y Corrección de JQ)
 crear_distribucion() {
     echo "--- Crear Nueva Distribución (Avanzado) ---"
     echo "Necesitas un archivo JSON base para 'DistributionConfig'."
@@ -232,8 +231,9 @@ menu_principal() {
 
 start_script() {
     
-    # 0. ¡PRIMERA VERIFICACIÓN DE SEGURIDAD!
-    verificar_licencia
+    # 0. ¡PRIMERA VERIFICACIÓN DE SEGURIDAD! 🚨
+    # LA LLAMADA A VERIFICAR_LICENCIA DEBE SER LO PRIMERO.
+    verificar_licencia 
     
     clear
     echo "********************************************************"
@@ -247,5 +247,5 @@ start_script() {
     done
 }
 
-# Llamada inicial
+# Llamada inicial que ejecuta todo
 start_script
