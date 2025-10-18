@@ -13,8 +13,8 @@ TEMP_DOWNLOAD_DIR="/tmp/aws-cli-install"
 
 # Variables del Panel de Licencias (¡¡¡IMPORTANTE!!! ACTUALIZA ESTAS URLs CON TU HOSTING)
 GENERATED_KEY_FILE="$HOME/.script_key.txt"
-PANEL_URL_REGISTER="https://panelhtv.store//licensing/register.php" # Endpoint para registrar la clave
-PANEL_URL_VALIDATE="https://panelhtv.store/licensing/validate.php" # Endpoint para verificar el estado
+PANEL_URL_REGISTER="https://tudominio.com/licensing/register.php" # Endpoint para registrar la clave
+PANEL_URL_VALIDATE="https://tudominio.com/licensing/validate.php" # Endpoint para verificar el estado
 
 # Variables de Estado
 SCRIPT_KEY=""
@@ -63,14 +63,14 @@ get_or_generate_key() {
     fi
 }
 
-# Función para verificar la Key con el panel de administración
+# --- FUNCIÓN DE VERIFICACIÓN DE CLAVE (VERSIÓN DE DEPURACIÓN) ---
 verificar_licencia() {
     clear
     echo "========================================="
     echo "   PROTECCIÓN DE ACCESO: LICENCIA REQUERIDA  "
     echo "========================================="
     
-    # 1. Obtener la Key (ya sea generada o cargada)
+    # 1. Obtener la Key
     get_or_generate_key
     echo "Clave de Licencia Actual: $SCRIPT_KEY"
     echo "--------------------------------------------------------"
@@ -78,43 +78,64 @@ verificar_licencia() {
     # 2. Intentar validar la Key (Llama a validate.php)
     echo "Paso 1/2: Verificando estado de aprobación en el servidor..."
     
-    local VALIDATE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    # Usamos '-v' (verbose) para ver detalles de la conexión
+    local TEMP_VALIDATE_OUTPUT="/tmp/validate_output_$$.json"
+    
+    # Ejecuta curl de forma detallada, guardando la respuesta del servidor en el archivo temporal
+    local VALIDATE_CODE=$(curl -s -v -o "$TEMP_VALIDATE_OUTPUT" -w "%{http_code}" \
         -H "Authorization: Bearer $SCRIPT_KEY" \
-        "$PANEL_URL_VALIDATE")
+        "$PANEL_URL_VALIDATE" 2>&1) 
+    
+    echo "--- DEBUG ---"
+    echo "Código HTTP de Validación: $VALIDATE_CODE"
+    echo "Respuesta del Servidor (Cuerpo):"
+    cat "$TEMP_VALIDATE_OUTPUT"
+    echo "------------- "
     
     # Manejar los resultados de la validación
     if [ "$VALIDATE_CODE" = "200" ]; then
         echo "✅ Licencia APROBADA. Acceso concedido."
         VERIFICACION_OK=true
-        sleep 1
-        return 0
+        rm -f "$TEMP_VALIDATE_OUTPUT"
+        return 0 # <--- Regresa código 0 (Éxito), permitiendo el acceso
     elif [ "$VALIDATE_CODE" = "403" ]; then
-        echo "❌ Licencia PENDIENTE O DENEGADA. Intentando registrar/re-registrar..."
+        echo "❌ Licencia PENDIENTE O DENEGADA (403). Procediendo a registrar/re-registrar..."
     else
-        echo "⚠️ Error de comunicación con el servidor de validación. Código HTTP: $VALIDATE_CODE"
-        echo "   (Verifique que el panel PHP esté funcionando en: $PANEL_URL_VALIDATE)"
-        exit 1
+        echo "⚠️ Error inesperado en la validación. Código HTTP: $VALIDATE_CODE"
+        echo "   (Revise la URL y el servidor PHP: $PANEL_URL_VALIDATE)"
+        rm -f "$TEMP_VALIDATE_OUTPUT"
+        exit 1 # <--- Salida Forzada
     fi
+    
+    rm -f "$TEMP_VALIDATE_OUTPUT"
     
     # 3. Si la clave no está aprobada (403), intentar registrar/re-registrar (Llama a register.php)
     echo "Paso 2/2: Enviando solicitud de registro al panel..."
     
-    local REGISTER_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    local TEMP_REGISTER_OUTPUT="/tmp/register_output_$$.json"
+    local REGISTER_CODE=$(curl -s -v -o "$TEMP_REGISTER_OUTPUT" -w "%{http_code}" \
         --data "key=$SCRIPT_KEY" \
-        "$PANEL_URL_REGISTER")
+        "$PANEL_URL_REGISTER" 2>&1)
 
-    if [ "$REGISTER_CODE" = "201" ] || [ "$REGISTER_CODE" = "409" ]; then # 201: Creado, 409: Duplicado (ya está en PENDING)
+    echo "--- DEBUG ---"
+    echo "Código HTTP de Registro: $REGISTER_CODE"
+    echo "Respuesta del Servidor (Cuerpo):"
+    cat "$TEMP_REGISTER_OUTPUT"
+    echo "------------- "
+
+    rm -f "$TEMP_REGISTER_OUTPUT"
+
+    if [ "$REGISTER_CODE" = "201" ] || [ "$REGISTER_CODE" = "409" ]; then
         echo ""
         echo "=========================================================="
         echo "⏳ SOLICITUD ENVIADA CON ÉXITO. Tu clave está PENDIENTE."
         echo "   ID de Solicitud: $SCRIPT_KEY"
-        echo "   Por favor, contacta al administrador para que APRUEBE tu licencia."
+        echo "   **DEBES CONTACTAR AL ADMINISTRADOR PARA APROBARLA.**"
         echo "=========================================================="
-        exit 1
+        exit 1 # <--- Salida Forzada
     else
         echo "❌ ERROR FATAL al intentar registrar la clave. Código HTTP: $REGISTER_CODE"
-        echo "   (Verifique el archivo register.php en su hosting.)"
-        exit 1
+        exit 1 # <--- Salida Forzada
     fi
 }
 
@@ -232,7 +253,6 @@ menu_principal() {
 start_script() {
     
     # 0. ¡PRIMERA VERIFICACIÓN DE SEGURIDAD! 🚨
-    # LA LLAMADA A VERIFICAR_LICENCIA DEBE SER LO PRIMERO.
     verificar_licencia 
     
     clear
