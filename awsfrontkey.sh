@@ -79,12 +79,12 @@ verificar_licencia() {
     echo "Paso 1/2: Verificando estado de aprobación en el servidor..."
     
     # Usamos '-v' (verbose) para ver detalles de la conexión
-    local TEMP_VALIDATE_OUTPUT="/tmp/validate_output_$$.json"
+local TEMP_VALIDATE_OUTPUT="/tmp/validate_output_$$.json"
     
-    # Ejecuta curl de forma detallada, guardando la respuesta del servidor en el archivo temporal
+    # 🚨 CAMBIO CLAVE: Usamos --data para enviar la Key, evitando problemas de header en Apache
     local VALIDATE_CODE=$(curl -s -v -o "$TEMP_VALIDATE_OUTPUT" -w "%{http_code}" \
-        -H "Authorization: Bearer $SCRIPT_KEY" \
-        "$PANEL_URL_VALIDATE" 2>&1) 
+        --data "key=$SCRIPT_KEY" \
+        "$PANEL_URL_VALIDATE" 2>&1)
     
     echo "--- DEBUG ---"
     echo "Código HTTP de Validación: $VALIDATE_CODE"
