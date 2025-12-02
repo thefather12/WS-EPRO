@@ -2,8 +2,7 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.0: Solución de desbordamiento de JSON en 'Crear Distribución' (Opción 5) 
-# y 'Activar/Desactivar Distribución' (Opción 3).
+# Versión 5.1: Agregada Opción 6 "Agregar o Cambiar Credenciales AWS" al menú. 
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -103,32 +102,42 @@ instalar_aws_cli() {
     fi
 }
 
-# Función para configurar credenciales AWS (solo si no están)
+# Función para configurar credenciales AWS
 configurar_aws() {
-    # Comprobar si ya existen credenciales básicas
-    if [ -f "$HOME/.aws/credentials" ] && grep -q '^\[default\]' "$HOME/.aws/credentials"; then
-        echo "✅ Archivos de configuración/credenciales de AWS existentes. Omitiendo configuración."
-        return 0
-    fi
-    
     echo "======================================================"
-    echo "  -> Configuración de Credenciales de AWS (necesaria)  "
+    echo "  -> Configuración de Credenciales de AWS (aws configure) "
     echo "======================================================"
     
-    echo "Ingrese sus credenciales (Access Key ID y Secret Key). Serán guardadas en ~/.aws/."
+    echo "Ingrese sus credenciales (Access Key ID y Secret Key)."
+    echo "Esta acción sobrescribirá las credenciales existentes en ~/.aws/."
     
     export_aws_path 
+    
+    # Ejecuta el comando aws configure
     "$AWS_CLI" configure
     
     if [ $? -eq 0 ]; then
-        echo "✅ Configuración inicial completada."
+        echo "✅ Configuración de AWS CLI completada/actualizada."
     else
         echo "⚠️ Hubo un problema con la configuración. Verifique los datos ingresados."
     fi
 }
 
+# Función para la configuración inicial (solo para el primer inicio)
+configuracion_inicial() {
+     # Comprobar si ya existen credenciales básicas para evitar la interrupción en el primer inicio
+    if [ -f "$HOME/.aws/credentials" ] && grep -q '^\[default\]' "$HOME/.aws/credentials"; then
+        echo "✅ Archivos de configuración/credenciales de AWS existentes. Omitiendo configuración inicial."
+        return 0
+    else
+        echo "⚠️ No se detectaron credenciales de AWS. Se iniciará la configuración."
+        configurar_aws
+    fi
+}
+
+
 # ----------------------------------------------------------------------
-# FUNCIÓN DE DESCARGA DE CONFIGURACIÓN JSON (NUEVA)
+# FUNCIÓN DE DESCARGA DE CONFIGURACIÓN JSON
 # ----------------------------------------------------------------------
 
 descargar_json_config() {
@@ -143,7 +152,6 @@ descargar_json_config() {
 
     if [ -f "$TARGET_FILE" ]; then
         echo "✅ Archivo JSON de configuración ya existe. Omitiendo descarga."
-        # Notificamos al usuario la ruta donde se encuentra el archivo
         echo "   (Usar '$TARGET_FILE' en la Opción 5)"
         return 0
     fi
@@ -217,7 +225,7 @@ ver_estado_distribucion() {
     fi
 }
 
-# 3. Crear una distribución (CORREGIDA PARA CALLER REFERENCE DINÁMICA y DOMINIO DINÁMICO)
+# 3. Crear una distribución
 crear_distribucion() {
     echo "--- Crear Nueva Distribución (Avanzado) ---"
     echo "Necesitas un archivo JSON base para 'DistributionConfig'."
@@ -279,7 +287,7 @@ crear_distribucion() {
     rm -f "$TEMP_OUTPUT"
 }
 
-# 4. Activar/Desactivar Distribución (CORREGIDA)
+# 4. Activar/Desactivar Distribución
 toggle_distribucion() {
     # Si se llama desde la función eliminar_distribucion, toma el ID del argumento $1
     # Si se llama desde el menú, pide el ID
@@ -383,7 +391,7 @@ remover_panel() {
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v2) "
+    echo " CloudFront VPS Administration Tool (v5.1)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
     echo "1. 📋 Listar Distribuciones y Estado General"
@@ -392,6 +400,9 @@ menu_principal() {
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
     echo "5. 🆕 Crear Nueva Distribución (Avanzado)"
+    echo "-----------------------------------"
+    echo "--- Configuración ---"
+    echo "6. 🔑 Agregar o Cambiar Credenciales AWS" # <-- NUEVA OPCIÓN
     echo "-----------------------------------"
     echo "9. ♻️ Remover este Panel (Script)"
     echo "0. 🚪 Salir del Script"
@@ -404,6 +415,7 @@ menu_principal() {
         3) toggle_distribucion ;;
         4) eliminar_distribucion ;;
         5) crear_distribucion ;;
+        6) configurar_aws ;; # <-- LLAMADA A LA FUNCIÓN
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
@@ -436,13 +448,13 @@ start_script() {
         exit 1
     fi
 
-    # 3. Configurar Credenciales
-    configurar_aws
+    # 3. Configuración Inicial (solo si no existen credenciales)
+    configuracion_inicial
     
-        # 4. Descargar el archivo JSON de configuración (¡NUEVA LLAMADA!)
+    # 4. Descargar el archivo JSON de configuración
     descargar_json_config 
 
-    # 4. Iniciar Bucle Principal del Menú
+    # 5. Iniciar Bucle Principal del Menú
     while true; do
         menu_principal
     done
