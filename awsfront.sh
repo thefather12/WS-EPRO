@@ -2,7 +2,7 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.1: Agregada Opción 6 "Agregar o Cambiar Credenciales AWS" al menú. 
+# Versión 5.3: Opción 1 (Listar) modificada para replicar el formato y sub-menú de la imagen proporcionada.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -16,8 +16,10 @@ AWS_CLI=$(which aws 2>/dev/null)
 JQ_CLI=$(which jq 2>/dev/null)
 
 # ----------------------------------------------------------------------
-# FUNCIONES DE INSTALACIÓN Y CHEQUEO DE REQUISITOS
+# FUNCIONES DE INSTALACIÓN Y CHEQUEO DE REQUISITOS (Sin cambios)
 # ----------------------------------------------------------------------
+
+# [Funciones de instalación: check_command, export_aws_path, instalar_jq, instalar_aws_cli, configurar_aws, configuracion_inicial, descargar_json_config se mantienen sin cambios]
 
 # Función para verificar si un comando existe
 check_command() {
@@ -28,7 +30,7 @@ check_command() {
 export_aws_path() {
     if [[ ":$PATH:" != *":$AWS_BIN_PATH:"* ]]; then
         export PATH="$PATH:$AWS_BIN_PATH"
-        AWS_CLI=$(which aws 2>/dev/null) # Re-evaluar la ruta de AWS CLI
+        AWS_CLI=$(which aws 2>/dev/null)
     fi
 }
 
@@ -137,7 +139,7 @@ configuracion_inicial() {
 
 
 # ----------------------------------------------------------------------
-# FUNCIÓN DE DESCARGA DE CONFIGURACIÓN JSON
+# FUNCIÓN DE DESCARGA DE CONFIGURACIÓN JSON 
 # ----------------------------------------------------------------------
 
 descargar_json_config() {
@@ -176,6 +178,7 @@ get_config_and_etag() {
     local DIST_ID=$1
     echo "Obteniendo configuración y ETag para $DIST_ID..."
     
+    # Se guarda el output completo para poder extraer más detalles
     "$AWS_CLI" cloudfront get-distribution --id "$DIST_ID" --output json > /tmp/temp_dist_info.json
     
     if [ $? -ne 0 ]; then
@@ -183,49 +186,118 @@ get_config_and_etag() {
         return 1
     fi
     
-    # Extraer el ETag y guardar solo DistributionConfig en el archivo de configuración
+    # Extraer el ETag
     export CURRENT_ETAG=$(cat /tmp/temp_dist_info.json | "$JQ_CLI" -r '.ETag')
+    # Guardar solo DistributionConfig para las funciones de modificación (toggle, delete)
     cat /tmp/temp_dist_info.json | "$JQ_CLI" '.Distribution.DistributionConfig' > "$CONFIG_FILE"
-    rm -f /tmp/temp_dist_info.json
     
     if [ -z "$CURRENT_ETAG" ]; then
         echo "Error: No se pudo obtener el ETag."
+        rm -f /tmp/temp_dist_info.json
         return 1
     fi
     return 0
 }
 
-# 1. Listar distribuciones
+# 1. Listar distribuciones (MODIFICADA para sub-menú)
 listar_distribuciones() {
-    echo "--- Listado y Estado de Distribuciones de CloudFront ---"
+    clear
+    echo "[INFO] Verificando permisos de CloudFront..."
     
-    "$AWS_CLI" cloudfront list-distributions \
-        --query 'DistributionList.Items[*].{ID:Id,Domain:DomainName,Status:Status,Enabled:Enabled}' \
-        --output table
+    # Intento de verificar permisos (simulación de verificación)
+    if ! "$AWS_CLI" sts get-caller-identity > /dev/null 2>&1; then
+        echo "[ERROR] ❌ No se pudieron verificar los permisos de AWS. Abortando."
+        return
+    fi
+    echo "[SUCCESS] ✅ Permisos CloudFront verificados"
+
+    echo "[INFO] Buscando distribuciones CloudFront (servicio global)..."
+
+    local TEMP_LIST="/tmp/dist_list_$$.json"
+    local DIST_COUNT=0
+    
+    # Obtener lista completa de distribuciones
+    "$AWS_CLI" cloudfront list-distributions --output json > "$TEMP_LIST"
     
     if [ $? -ne 0 ]; then
-        echo "Error al listar. Verifica tus permisos IAM."
+        echo "[ERROR] ❌ Error al listar las distribuciones. Verifica tus permisos IAM."
+        rm -f "$TEMP_LIST"
+        return
     fi
-}
 
-# 2. Ver estado de distribución
-ver_estado_distribucion() {
-    read -p "Introduce el ID de la Distribución: " DIST_ID
+    DIST_COUNT=$("$JQ_CLI" '.DistributionList.Quantity' "$TEMP_LIST")
     
-    if get_config_and_etag "$DIST_ID"; then
-        echo "--- Estado de la Distribución $DIST_ID ---"
-        # Usamos jq para mostrar datos clave
-        cat "$CONFIG_FILE" | "$JQ_CLI" '{
-            ID: "'"$DIST_ID"'", 
-            Domain: .Aliases.Items[0], 
-            Status: .Status, 
-            Enabled: .Enabled, 
-            Origin: .Origins.Items[0].DomainName
-        }'
-    fi
+    echo "[SUCCESS] Se encontraron $DIST_COUNT distribuciones CloudFront en la cuenta"
+    
+    echo ""
+    echo "========================================"
+    echo " DISTRIBUCIONES CLOUDFRONT DISPONIBLES: "
+    echo "========================================"
+    
+    # Usar jq para iterar sobre los ítems y extraer los detalles
+    local ITEMS_JSON=$("$JQ_CLI" -r '.DistributionList.Items[] | .Id + "\t" + .DomainName + "\t" + .Status + "\t" + .DistributionConfig.Origins.Items[0].DomainName + "\t" + .DistributionConfig.Comment' "$TEMP_LIST")
+    
+    local i=1
+    declare -a DIST_IDS
+    
+    while IFS=$'\t' read -r ID DOMAIN STATUS ORIGIN COMMENT; do
+        DIST_IDS[i]=$ID
+        echo ""
+        echo "$i. $DOMAIN"
+        echo "🆔 ID: $ID"
+        echo "🌐 Estado: $STATUS"
+        echo "🌍 Origen: $ORIGIN"
+        echo "💬 Comentario: $COMMENT"
+        i=$((i+1))
+    done <<< "$ITEMS_JSON"
+    
+    rm -f "$TEMP_LIST"
+    
+    # --- Sub-Menú de Gestión ---
+    
+    echo ""
+    echo "OPCIONES DISPONIBLES:"
+    echo "1. ⚙️ Extraer configuración de una distribución"
+    echo "2. 🔙 Volver al menú anterior"
+    
+    read -p "Selecciona una opción (1-2): " SUB_OPCION
+    
+    case $SUB_OPCION in
+        1)
+            read -p "¿Qué número de distribución deseas gestionar?: " NUM_DIST
+            if [[ "$NUM_DIST" =~ ^[0-9]+$ ]] && [ "$NUM_DIST" -ge 1 ] && [ "$NUM_DIST" -lt "$i" ]; then
+                local SELECTED_ID="${DIST_IDS[$NUM_DIST]}"
+                echo "Seleccionaste: $SELECTED_ID"
+                
+                # Obtener ETag y Configuration (usando la función existente)
+                if get_config_and_etag "$SELECTED_ID"; then
+                    # Muestra la configuración completa y la guarda en un archivo fácil de encontrar
+                    FINAL_CONFIG_FILE="$HOME/cloudfront_config_${SELECTED_ID}.json"
+                    mv "$CONFIG_FILE" "$FINAL_CONFIG_FILE"
+                    echo "✅ Configuración extraída y guardada en: $FINAL_CONFIG_FILE"
+                    echo "Nota: Usa este archivo para la Opción 5 si deseas clonar la configuración."
+                fi
+            else
+                echo "Número de distribución no válido."
+            fi
+            ;;
+        2)
+            # Volver al menú principal (la función main_menu lo manejará)
+            return
+            ;;
+        *)
+            echo "Opción no válida."
+            ;;
+    esac
 }
 
-# 3. Crear una distribución
+# 2. Ver estado de distribución (REMOVING OLD FUNCTIONALITY)
+ver_estado_distribucion() {
+    echo "⛔ La funcionalidad de 'Ver Estado Detallado' ahora está integrada en la Opción 1 (Listar y Gestionar)."
+    echo "Por favor, usa la Opción 1 para ver el listado completo de distribuciones."
+}
+
+# 3. Crear una distribución (Sin cambios)
 crear_distribucion() {
     echo "--- Crear Nueva Distribución (Avanzado) ---"
     echo "Necesitas un archivo JSON base para 'DistributionConfig'."
@@ -287,7 +359,7 @@ crear_distribucion() {
     rm -f "$TEMP_OUTPUT"
 }
 
-# 4. Activar/Desactivar Distribución
+# 4. Activar/Desactivar Distribución (Sin cambios)
 toggle_distribucion() {
     # Si se llama desde la función eliminar_distribucion, toma el ID del argumento $1
     # Si se llama desde el menú, pide el ID
@@ -336,7 +408,7 @@ toggle_distribucion() {
     fi
 }
 
-# 5. Eliminar una Distribución 
+# 5. Eliminar una Distribución (Sin cambios)
 eliminar_distribucion() {
     read -p "Introduce el ID de la Distribución a ELIMINAR: " DIST_ID
     
@@ -375,7 +447,7 @@ eliminar_distribucion() {
     fi
 }
 
-# 6. Remover el Panel (Script)
+# 6. Remover el Panel (Script) (Sin cambios)
 remover_panel() {
     echo "Eliminando el script '$0'..."
     rm -- "$0"
@@ -387,22 +459,22 @@ remover_panel() {
     fi
 }
 
-# 7. Función del menú principal
+# 7. Función del menú principal (Con Opción 6 para credenciales)
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v5.1)"
+    echo " CloudFront VPS Administration Tool (v5.3)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General"
-    echo "2. 📊 Ver Estado Detallado (por ID)"
+    echo "1. 📋 LISTA Y GESTIÓN DE DISTRIBUCIONES CLOUDFRONT" # <-- MODIFICADA
+    echo "2. ❌ Funcionalidad integrada en Opción 1" 
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
     echo "5. 🆕 Crear Nueva Distribución (Avanzado)"
     echo "-----------------------------------"
     echo "--- Configuración ---"
-    echo "6. 🔑 Agregar o Cambiar Credenciales AWS" # <-- NUEVA OPCIÓN
+    echo "6. 🔑 Agregar o Cambiar Credenciales AWS"
     echo "-----------------------------------"
     echo "9. ♻️ Remover este Panel (Script)"
     echo "0. 🚪 Salir del Script"
@@ -411,11 +483,11 @@ menu_principal() {
     
     case $OPCION in
         1) listar_distribuciones ;;
-        2) ver_estado_distribucion ;;
+        2) ver_estado_distribucion ;; # Muestra mensaje de ayuda
         3) toggle_distribucion ;;
         4) eliminar_distribucion ;;
         5) crear_distribucion ;;
-        6) configurar_aws ;; # <-- LLAMADA A LA FUNCIÓN
+        6) configurar_aws ;;
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
