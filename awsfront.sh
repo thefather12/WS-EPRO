@@ -2,7 +2,8 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.9.3: Formato mejorado, Origen en lista y Auto-Actualización.
+# Versión 5.9.4: Formato mejorado, Origen en lista, Auto-Actualización
+#                y NUEVA función para EDITAR DISTRIBUCIÓN (Opción 2).
 # ==============================================================
 
 # --- VARIABLES DE ACTUALIZACIÓN ---
@@ -12,7 +13,7 @@ REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/he
 # Ubicación local del script (asegura que $0 tiene el path completo)
 LOCAL_SCRIPT_PATH="$(realpath "$0")"
 # Versión del script (debe coincidir con el contenido del archivo version.txt remoto)
-CURRENT_VERSION="5.9.5" 
+CURRENT_VERSION="5.9.6" 
 
 # --- VARIABLES GLOBALES ---
 AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
@@ -184,6 +185,7 @@ get_config_and_etag() {
     local DIST_ID=$1
     echo "Obteniendo configuración y ETag para $DIST_ID..."
     
+    # El comando get-distribution incluye ambos ETag y DistributionConfig
     "$AWS_CLI" cloudfront get-distribution --id "$DIST_ID" --output json > /tmp/temp_dist_info.json
     
     if [ $? -ne 0 ]; then
@@ -203,13 +205,12 @@ get_config_and_etag() {
     return 0
 }
 
-# 1. Listar distribuciones (VERSIÓN MEJORADA CON FORMATO DETALLADO Y ORIGEN)
+# 1. Listar distribuciones 
 listar_distribuciones() {
     echo "========================================================================="
     echo " 📋 Listado y Estado de Distribuciones de CloudFront (Formato Detallado)"
     echo "========================================================================="
     
-    # Obtener el JSON completo del listado de distribuciones
     local DIST_LIST_JSON
     DIST_LIST_JSON=$("$AWS_CLI" cloudfront list-distributions --output json)
     
@@ -218,13 +219,11 @@ listar_distribuciones() {
         return 1
     fi
     
-    # Usar jq para iterar sobre cada distribución y aplicar formato
     local COUNT=0
     
     echo "$DIST_LIST_JSON" | "$JQ_CLI" -c '.DistributionList.Items[]' | while read -r DIST_ITEM; do
         COUNT=$((COUNT + 1))
         
-        # Extraer los campos clave usando jq
         ID=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.Id')
         DOMAIN_NAME=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.DomainName')
         STATUS=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.Status')
@@ -235,24 +234,18 @@ listar_distribuciones() {
         local ORIGIN_DOMAIN=""
         local TEMP_CONFIG_JSON="/tmp/temp_config_${ID}.json"
 
-        # Capturar la configuración completa de la distribución
-        # Redirigimos stderr a /dev/null para no mostrar errores si falla una distribución
         "$AWS_CLI" cloudfront get-distribution-config --id "$ID" --output json > "$TEMP_CONFIG_JSON" 2>/dev/null
         
         if [ $? -eq 0 ]; then
-            # Extraer el DomainName del primer origen (asumiendo que al menos hay uno)
             ORIGIN_DOMAIN=$(cat "$TEMP_CONFIG_JSON" | "$JQ_CLI" -r '.DistributionConfig.Origins.Items[0].DomainName' 2>/dev/null)
-            # Limpiar archivo temporal
             rm -f "$TEMP_CONFIG_JSON"
         fi
         
-        # Si ORIGIN_DOMAIN está vacío o nulo (por error o porque no hay origen)
         if [ -z "$ORIGIN_DOMAIN" ] || [ "$ORIGIN_DOMAIN" = "null" ]; then
             ORIGIN_DOMAIN="No Definido / Error de Acceso"
         fi
         # -----------------------------------------------------------------------
         
-        # Asignar un emoji y color basado en el estado (Enabled)
         if [ "$ENABLED" = "true" ]; then
             EMOJI="🟢"
             STATUS_COLOR="\033[32m" # Verde
@@ -281,21 +274,82 @@ listar_distribuciones() {
     fi
 }
 
-# 2. Ver estado de distribución (Sin cambios)
-ver_estado_distribucion() {
-    read -p "Introduce el ID de la Distribución: " DIST_ID
+# 2. Editar distribución (NUEVA FUNCIÓN - Reemplaza ver_estado_distribucion)
+editar_distribucion() {
+    read -p "Introduce el ID de la Distribución a editar: " DIST_ID
     
-    if get_config_and_etag "$DIST_ID"; then
-        echo "--- Estado de la Distribución $DIST_ID ---"
-        # Usamos jq para mostrar datos clave
-        cat "$CONFIG_FILE" | "$JQ_CLI" '{
-            ID: "'"$DIST_ID"'", 
-            Domain: .Aliases.Items[0], 
-            Status: .Status, 
-            Enabled: .Enabled, 
-            Origin: .Origins.Items[0].DomainName
-        }'
+    # 1. Obtener configuración y ETag
+    if ! get_config_and_etag "$DIST_ID"; then
+        return 1
     fi
+    
+    echo "--------------------------------------------------------"
+    echo "Configuración actual de $DIST_ID:"
+    # Mostrar el origen actual
+    CURRENT_ORIGIN=$(cat "$CONFIG_FILE" | "$JQ_CLI" -r '.Origins.Items[0].DomainName' 2>/dev/null)
+    echo -e "Origen actual: \033[36m$CURRENT_ORIGIN\033[0m"
+    
+    # 2. Sub-menú de edición
+    echo "--------------------------------------------------------"
+    echo "--- Opciones de Edición ---"
+    echo "1. 🌐 Cambiar Dominio de Origen (Origin Domain)"
+    echo "0. 🚪 Cancelar y Salir"
+    echo "--------------------------------------------------------"
+    read -p "Selecciona una opción de edición: " EDIT_OPCION
+    
+    case $EDIT_OPCION in
+        1)
+            read -p "Introduce el NUEVO Dominio de Origen (ej: mi-nuevo-api.com): " NEW_ORIGIN
+            
+            if [ -z "$NEW_ORIGIN" ]; then
+                echo "❌ Dominio de Origen no puede estar vacío. Cancelando."
+                return 1
+            fi
+            
+            if [ "$NEW_ORIGIN" = "$CURRENT_ORIGIN" ]; then
+                echo "⚠️ El nuevo dominio es el mismo que el actual. No se requiere actualización."
+                return 0
+            fi
+
+            echo "Preparando actualización para cambiar el origen de $CURRENT_ORIGIN a $NEW_ORIGIN..."
+            
+            # Modificar el campo DomainName del primer origen en el archivo de configuración
+            "$JQ_CLI" ".Origins.Items[0].DomainName = \"$NEW_ORIGIN\"" "$CONFIG_FILE" > /tmp/updated_config.json && mv /tmp/updated_config.json "$CONFIG_FILE"
+            
+            if [ $? -ne 0 ]; then
+                echo "❌ Error al modificar el archivo JSON de configuración con jq."
+                return 1
+            fi
+            
+            # 3. Ejecutar la actualización
+            local TEMP_OUTPUT_UPDATE="/tmp/update_dist_output_$$.json"
+            
+            "$AWS_CLI" cloudfront update-distribution \
+                --id "$DIST_ID" \
+                --distribution-config "file://$CONFIG_FILE" \
+                --if-match "$CURRENT_ETAG" > "$TEMP_OUTPUT_UPDATE"
+
+            local EXIT_CODE=$?
+
+            if [ $EXIT_CODE -eq 0 ]; then
+                echo "✅ Distribución actualizada con éxito."
+                echo "   Nuevo Origen: $NEW_ORIGIN"
+                echo "   El cambio se propagará cuando el estado sea 'Deployed'."
+            else
+                echo "❌ Error al actualizar la distribución. Verifique el ETag, el estado ('Deployed') o los permisos."
+                if [ -s "$TEMP_OUTPUT_UPDATE" ]; then
+                    cat "$TEMP_OUTPUT_UPDATE"
+                fi
+            fi
+            rm -f "$TEMP_OUTPUT_UPDATE"
+            ;;
+        0)
+            echo "Edición cancelada."
+            ;;
+        *)
+            echo "Opción no válida."
+            ;;
+    esac
 }
 
 # 3. Crear una distribución (Sin cambios)
@@ -448,7 +502,7 @@ eliminar_distribucion() {
     fi
 }
 
-# 6. Función para auto-actualizar el script (NUEVA FUNCIÓN)
+# 6. Función para auto-actualizar el script 
 actualizar_script() {
     echo "========================================="
     echo " ⬆️ Buscando Actualizaciones de Script (v$CURRENT_VERSION)"
@@ -525,7 +579,7 @@ menu_principal() {
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
     echo "1. 📋 Listar Distribuciones y Estado General" 
-    echo "2. 📊 Ver Estado Detallado (por ID)"
+    echo "2. 🛠️ Editar Distribución (Cambiar Origen, etc.)" # <-- ¡NUEVA FUNCIÓN!
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
@@ -533,7 +587,7 @@ menu_principal() {
     echo "-----------------------------------"
     echo "--- Configuración / Mantenimiento ---" 
     echo "6. 🔑 Agregar o Cambiar Credenciales AWS" 
-    echo "7. 🔄 Buscar y Actualizar Script (v$CURRENT_VERSION)" # <-- NUEVA OPCIÓN
+    echo "7. 🔄 Buscar y Actualizar Script (v$CURRENT_VERSION)" 
     echo "-----------------------------------"
     echo "9. ♻️ Remover este Panel (Script)"
     echo "0. 🚪 Salir del Script"
@@ -542,18 +596,17 @@ menu_principal() {
     
     case $OPCION in
         1) listar_distribuciones ;;
-        2) ver_estado_distribucion ;;
+        2) editar_distribucion ;; # <-- Llama a la nueva función de edición
         3) toggle_distribucion ;;
         4) eliminar_distribucion ;;
         5) crear_distribucion ;;
         6) configurar_aws_manual ;; 
-        7) actualizar_script ;; # <-- Llama a la nueva función de actualización
+        7) actualizar_script ;; 
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
     esac
     
-    # Esta línea asegura que el script pausa antes de volver a dibujar el menú
     read -p "Presiona ENTER para continuar..."
 }
 
