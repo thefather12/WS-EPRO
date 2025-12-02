@@ -2,8 +2,8 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.5: Opción 1 (Listar) mejorada para mostrar estado ACTIVO/INACTIVO
-# y la Clase de Precio/Cobertura Global de la distribución.
+# Versión 5.6: CORRECCIÓN CRÍTICA: La Opción 1 ahora muestra el estado ACTIVA/INACTIVA
+# correctamente moviendo la lógica booleana a JQ.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -29,7 +29,7 @@ check_command() {
 export_aws_path() {
     if [[ ":$PATH:" != *":$AWS_BIN_PATH:"* ]]; then
         export PATH="$PATH:$AWS_BIN_PATH"
-        AWS_CLI=$(which aws 2>/dev/null) # Re-evaluar la ruta de AWS CLI
+        AWS_CLI=$(which aws 2>/dev/null)
     fi
 }
 
@@ -195,7 +195,7 @@ get_config_and_etag() {
     return 0
 }
 
-# 1. Listar distribuciones (MODIFICADA)
+# 1. Listar distribuciones (CORREGIDA)
 listar_distribuciones() {
     echo "--- Listado y Estado de Distribuciones de CloudFront ---"
     
@@ -216,8 +216,8 @@ listar_distribuciones() {
         .Id + "\t" + 
         .DomainName + "\t" + 
         .Status + "\t" + 
-        (.DistributionConfig.Enabled | tostring) + "\t" + 
-        .DistributionConfig.PriceClass' "$TEMP_LIST")
+        (if .DistributionConfig.Enabled then "[✅ ACTIVA]" else "[🚫 INACTIVA]" end) + "\t" + 
+        .DistributionConfig.PriceClass' "$TEMP_LIST") # <--- CORRECCIÓN DE LA LÓGICA DE ESTADO
 
     rm -f "$TEMP_LIST"
 
@@ -226,20 +226,13 @@ listar_distribuciones() {
     echo "=========================================================================="
 
     # 2. Iterar sobre los resultados para formatear la salida
-    while IFS=$'\t' read -r ID DOMAIN STATUS ENABLED PRICE_CLASS; do
+    while IFS=$'\t' read -r ID DOMAIN STATUS ACTIVE_STATUS PRICE_CLASS; do # <--- La variable ACTIVE_STATUS ahora recibe el valor formateado
         
-        # 3. Formatear el estado Activo/Inactivo
-        if [ "$ENABLED" == "true" ]; then
-            ACTIVE_STATUS="[✅ ACTIVA]"
-        else
-            ACTIVE_STATUS="[🚫 INACTIVA]"
-        fi
-
-        # 4. Formatear la Clase de Precio (Cobertura Global)
+        # 3. Formatear la Clase de Precio (Cobertura Global)
         # Reemplazar guiones bajos por espacios para una mejor presentación
         COVERAGE_REGION="${PRICE_CLASS//_/ }" 
 
-        # 5. Imprimir la línea formateada
+        # 4. Imprimir la línea formateada
         printf "%s\n" "ID: $ID"
         printf "%s\n" "Dominio: $DOMAIN"
         printf "%s %s\n" "Estado: $STATUS" "$ACTIVE_STATUS"
@@ -434,10 +427,10 @@ remover_panel() {
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v5.5)"
+    echo " CloudFront VPS Administration Tool (v5.6)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Mejorada
+    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Corregida
     echo "2. 📊 Ver Estado Detallado (por ID)" 
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
