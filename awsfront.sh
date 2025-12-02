@@ -2,7 +2,7 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.9.1: Formato mejorado para listar distribuciones.
+# Versión 5.9.2: Formato mejorado para listar distribuciones, incluyendo el Origen.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -194,7 +194,7 @@ get_config_and_etag() {
     return 0
 }
 
-# 1. Listar distribuciones (VERSIÓN MEJORADA CON FORMATO DETALLADO)
+# 1. Listar distribuciones (VERSIÓN MEJORADA CON FORMATO DETALLADO Y ORIGEN)
 listar_distribuciones() {
     echo "========================================================================="
     echo " 📋 Listado y Estado de Distribuciones de CloudFront (Formato Detallado)"
@@ -222,6 +222,27 @@ listar_distribuciones() {
         ENABLED=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.Enabled')
         PRICE_CLASS=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.PriceClass')
         
+        # --- LÓGICA PARA OBTENER EL ORIGEN (REQUIERE LLAMADA ADICIONAL A LA API) ---
+        local ORIGIN_DOMAIN=""
+        local TEMP_CONFIG_JSON="/tmp/temp_config_${ID}.json"
+
+        # Capturar la configuración completa de la distribución
+        # Redirigimos stderr a /dev/null para no mostrar errores si falla una distribución
+        "$AWS_CLI" cloudfront get-distribution-config --id "$ID" --output json > "$TEMP_CONFIG_JSON" 2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+            # Extraer el DomainName del primer origen (asumiendo que al menos hay uno)
+            ORIGIN_DOMAIN=$(cat "$TEMP_CONFIG_JSON" | "$JQ_CLI" -r '.DistributionConfig.Origins.Items[0].DomainName' 2>/dev/null)
+            # Limpiar archivo temporal
+            rm -f "$TEMP_CONFIG_JSON"
+        fi
+        
+        # Si ORIGIN_DOMAIN está vacío o nulo (por error o porque no hay origen)
+        if [ -z "$ORIGIN_DOMAIN" ] || [ "$ORIGIN_DOMAIN" = "null" ]; then
+            ORIGIN_DOMAIN="No Definido / Error de Acceso"
+        fi
+        # -----------------------------------------------------------------------
+        
         # Asignar un emoji y color basado en el estado (Enabled)
         if [ "$ENABLED" = "true" ]; then
             EMOJI="🟢"
@@ -232,11 +253,11 @@ listar_distribuciones() {
         fi
         
         # Imprimir el bloque de información formateado
-        # \033[0m es para resetear el color
         echo "-------------------------------------------------------------------------"
         echo -e "** Distribución #$COUNT **"
         echo -e "ID:        \033[33m$ID\033[0m" # ID en color amarillo
         echo "Dominio:   $DOMAIN_NAME"
+        echo -e "Origen:    \033[36m$ORIGIN_DOMAIN\033[0m" # Origen en color cian/azul claro
         echo -e "Estado:    $STATUS"
         echo -e "Activada:  $STATUS_COLOR$EMOJI $ENABLED\033[0m" # Estado en color y con emoji
         echo "Clase Prod: $PRICE_CLASS"
@@ -437,14 +458,14 @@ menu_principal() {
     echo " CloudFront VPS Administration Tool (v5.9)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General" # <-- FORMATO MEJORADO
+    echo "1. 📋 Listar Distribuciones y Estado General" # <-- FORMATO MEJORADO CON ORIGEN
     echo "2. 📊 Ver Estado Detallado (por ID)"
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
     echo "5. 🆕 Crear Nueva Distribución (Avanzado)"
     echo "-----------------------------------"
-    echo "--- Configuración ---"
+    echo "--- CREDENCIALES MODIFICAR ---"
     echo "6. 🔑 Agregar o Cambiar Credenciales AWS" # <-- Opcion de Credenciales Mantenida
     echo "-----------------------------------"
     echo "9. ♻️ Remover este Panel (Script)"
@@ -462,7 +483,7 @@ menu_principal() {
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
-    esac
+    esac # <-- Corregido de 'esoc' a 'esac'
     
     # Esta línea asegura que el script pausa antes de volver a dibujar el menú
     read -p "Presiona ENTER para continuar..."
