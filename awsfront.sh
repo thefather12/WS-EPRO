@@ -2,7 +2,8 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.4: Base (v5.0) restaurada + Opción 6 para Configuración Manual de Credenciales.
+# Versión 5.9: Reversión a la base (v5.4/v5.0) con listado simple 
+# y manteniendo la Opción 6 para credenciales.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -194,20 +195,21 @@ get_config_and_etag() {
     return 0
 }
 
-# 1. Listar distribuciones (Vuelve a la tabla simple)
+# 1. Listar distribuciones (RESTAURADA A FORMATO SIMPLE DE TABLA)
 listar_distribuciones() {
     echo "--- Listado y Estado de Distribuciones de CloudFront ---"
     
+    # La salida de AWS CLI es la que determina el estado (Enabled) y el resto de la tabla
     "$AWS_CLI" cloudfront list-distributions \
         --query 'DistributionList.Items[*].{ID:Id,Domain:DomainName,Status:Status,Enabled:Enabled}' \
         --output table
     
     if [ $? -ne 0 ]; then
-        echo "Error al listar. Verifica tus permisos IAM."
+        echo "Error al listar. Verifica tus permisos IAM (Opción 6)."
     fi
 }
 
-# 2. Ver estado de distribución (Vuelve al JSON simple)
+# 2. Ver estado de distribución (Sin cambios)
 ver_estado_distribucion() {
     read -p "Introduce el ID de la Distribución: " DIST_ID
     
@@ -390,18 +392,18 @@ remover_panel() {
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v5.4)"
+    echo " CloudFront VPS Administration Tool (v5.9)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General"
-    echo "2. 📊 Ver Estado Detallado (por ID)" # Simple JSON Output
+    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Formato Simple
+    echo "2. 📊 Ver Estado Detallado (por ID)"
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
     echo "5. 🆕 Crear Nueva Distribución (Avanzado)"
     echo "-----------------------------------"
     echo "--- Configuración ---"
-    echo "6. 🔑 Agregar o Cambiar Credenciales AWS" # <-- Opción crucial para solucionar el error
+    echo "6. 🔑 Agregar o Cambiar Credenciales AWS" # <-- Opcion de Credenciales Mantenida
     echo "-----------------------------------"
     echo "9. ♻️ Remover este Panel (Script)"
     echo "0. 🚪 Salir del Script"
