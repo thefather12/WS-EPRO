@@ -2,8 +2,8 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.6: CORRECCIÓN CRÍTICA: La Opción 1 ahora muestra el estado ACTIVA/INACTIVA
-# correctamente moviendo la lógica booleana a JQ.
+# Versión 5.7: CORRECCIÓN ROBUSTA: Se añade limpieza de espacios en blanco
+# a la variable 'Enabled' para asegurar que el estado ACTIVA/INACTIVA se muestre correctamente.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -195,7 +195,7 @@ get_config_and_etag() {
     return 0
 }
 
-# 1. Listar distribuciones (CORREGIDA)
+# 1. Listar distribuciones (CORREGIDA con limpieza de espacios)
 listar_distribuciones() {
     echo "--- Listado y Estado de Distribuciones de CloudFront ---"
     
@@ -212,12 +212,13 @@ listar_distribuciones() {
     fi
     
     # Usar jq para extraer los campos necesarios en formato TSV (tab separated values)
+    # Extraemos el booleano 'Enabled' como una cadena
     local ITEMS_JSON=$("$JQ_CLI" -r '.DistributionList.Items[] | 
         .Id + "\t" + 
         .DomainName + "\t" + 
         .Status + "\t" + 
-        (if .DistributionConfig.Enabled then "[✅ ACTIVA]" else "[🚫 INACTIVA]" end) + "\t" + 
-        .DistributionConfig.PriceClass' "$TEMP_LIST") # <--- CORRECCIÓN DE LA LÓGICA DE ESTADO
+        (.DistributionConfig.Enabled | tostring) + "\t" + 
+        .DistributionConfig.PriceClass' "$TEMP_LIST") 
 
     rm -f "$TEMP_LIST"
 
@@ -226,13 +227,24 @@ listar_distribuciones() {
     echo "=========================================================================="
 
     # 2. Iterar sobre los resultados para formatear la salida
-    while IFS=$'\t' read -r ID DOMAIN STATUS ACTIVE_STATUS PRICE_CLASS; do # <--- La variable ACTIVE_STATUS ahora recibe el valor formateado
+    while IFS=$'\t' read -r ID DOMAIN STATUS ENABLED_RAW PRICE_CLASS; do
         
-        # 3. Formatear la Clase de Precio (Cobertura Global)
+        # 3. CORRECCIÓN ROBUSTA: Eliminar **todos** los espacios en blanco, tabs y saltos de línea 
+        # alrededor de la cadena booleana para asegurar una comparación limpia.
+        # Esto soluciona el problema de que Bash no reconozca 'true' debido a caracteres invisibles.
+        ENABLED_STATUS=$(echo "$ENABLED_RAW" | tr -d '[:space:]')
+
+        if [ "$ENABLED_STATUS" == "true" ]; then
+            ACTIVE_STATUS="[✅ ACTIVA]"
+        else
+            ACTIVE_STATUS="[🚫 INACTIVA]"
+        fi
+        
+        # 4. Formatear la Clase de Precio (Cobertura Global)
         # Reemplazar guiones bajos por espacios para una mejor presentación
         COVERAGE_REGION="${PRICE_CLASS//_/ }" 
 
-        # 4. Imprimir la línea formateada
+        # 5. Imprimir la línea formateada
         printf "%s\n" "ID: $ID"
         printf "%s\n" "Dominio: $DOMAIN"
         printf "%s %s\n" "Estado: $STATUS" "$ACTIVE_STATUS"
@@ -427,10 +439,10 @@ remover_panel() {
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v5.6)"
+    echo " CloudFront VPS Administration Tool (v5.7)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Corregida
+    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Corregida (Limpia espacios)
     echo "2. 📊 Ver Estado Detallado (por ID)" 
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
