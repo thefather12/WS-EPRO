@@ -12,7 +12,7 @@ REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/he
 # Ubicación local del script (asegura que $0 tiene el path completo)
 LOCAL_SCRIPT_PATH="$(realpath "$0")"
 # Versión del script (debe coincidir con el contenido del archivo version.txt remoto)
-CURRENT_VERSION="5.9.3" 
+CURRENT_VERSION="5.9.5" 
 
 # --- VARIABLES GLOBALES ---
 AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
