@@ -2,8 +2,7 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.9: Reversión a la base (v5.4/v5.0) con listado simple 
-# y manteniendo la Opción 6 para credenciales.
+# Versión 5.9.1: Formato mejorado para listar distribuciones.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -195,17 +194,60 @@ get_config_and_etag() {
     return 0
 }
 
-# 1. Listar distribuciones (RESTAURADA A FORMATO SIMPLE DE TABLA)
+# 1. Listar distribuciones (VERSIÓN MEJORADA CON FORMATO DETALLADO)
 listar_distribuciones() {
-    echo "--- Listado y Estado de Distribuciones de CloudFront ---"
+    echo "========================================================================="
+    echo " 📋 Listado y Estado de Distribuciones de CloudFront (Formato Detallado)"
+    echo "========================================================================="
     
-    # La salida de AWS CLI es la que determina el estado (Enabled) y el resto de la tabla
-    "$AWS_CLI" cloudfront list-distributions \
-        --query 'DistributionList.Items[*].{ID:Id,Domain:DomainName,Status:Status,Enabled:Enabled}' \
-        --output table
+    # Obtener el JSON completo del listado de distribuciones
+    local DIST_LIST_JSON
+    DIST_LIST_JSON=$("$AWS_CLI" cloudfront list-distributions --output json)
     
     if [ $? -ne 0 ]; then
-        echo "Error al listar. Verifica tus permisos IAM (Opción 6)."
+        echo "❌ Error al listar. Verifica tus permisos IAM (Opción 6)."
+        return 1
+    fi
+    
+    # Usar jq para iterar sobre cada distribución y aplicar formato
+    local COUNT=0
+    
+    echo "$DIST_LIST_JSON" | "$JQ_CLI" -c '.DistributionList.Items[]' | while read -r DIST_ITEM; do
+        COUNT=$((COUNT + 1))
+        
+        # Extraer los campos clave usando jq
+        ID=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.Id')
+        DOMAIN_NAME=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.DomainName')
+        STATUS=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.Status')
+        ENABLED=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.Enabled')
+        PRICE_CLASS=$(echo "$DIST_ITEM" | "$JQ_CLI" -r '.PriceClass')
+        
+        # Asignar un emoji y color basado en el estado (Enabled)
+        if [ "$ENABLED" = "true" ]; then
+            EMOJI="🟢"
+            STATUS_COLOR="\033[32m" # Verde
+        else
+            EMOJI="🔴"
+            STATUS_COLOR="\033[31m" # Rojo
+        fi
+        
+        # Imprimir el bloque de información formateado
+        # \033[0m es para resetear el color
+        echo "-------------------------------------------------------------------------"
+        echo -e "** Distribución #$COUNT **"
+        echo -e "ID:        \033[33m$ID\033[0m" # ID en color amarillo
+        echo "Dominio:   $DOMAIN_NAME"
+        echo -e "Estado:    $STATUS"
+        echo -e "Activada:  $STATUS_COLOR$EMOJI $ENABLED\033[0m" # Estado en color y con emoji
+        echo "Clase Prod: $PRICE_CLASS"
+        
+    done
+    
+    if [ "$COUNT" -eq 0 ]; then
+        echo "   (No se encontraron distribuciones de CloudFront.)"
+        echo "-------------------------------------------------------------------------"
+    else
+        echo "========================================================================="
     fi
 }
 
@@ -395,7 +437,7 @@ menu_principal() {
     echo " CloudFront VPS Administration Tool (v5.9)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Formato Simple
+    echo "1. 📋 Listar Distribuciones y Estado General" # <-- FORMATO MEJORADO
     echo "2. 📊 Ver Estado Detallado (por ID)"
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
@@ -420,7 +462,7 @@ menu_principal() {
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
-    esac
+    esoc
     
     # Esta línea asegura que el script pausa antes de volver a dibujar el menú
     read -p "Presiona ENTER para continuar..."
