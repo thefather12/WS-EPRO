@@ -7,7 +7,7 @@
 
 # --- VARIABLES DE ACTUALIZACIÓN ---
 # ¡IMPORTANTE! Reemplaza estas URLs por las rutas RAW correctas en tu repositorio
-REMOTE_VERSION_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/heads/main/version.txt"
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/heads/main/Update.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/heads/main/awsfront.sh"
 # Ubicación local del script (asegura que $0 tiene el path completo)
 LOCAL_SCRIPT_PATH="$(realpath "$0")"
