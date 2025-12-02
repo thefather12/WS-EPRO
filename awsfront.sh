@@ -462,7 +462,7 @@ menu_principal() {
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
-    esoc
+    esac
     
     # Esta línea asegura que el script pausa antes de volver a dibujar el menú
     read -p "Presiona ENTER para continuar..."
