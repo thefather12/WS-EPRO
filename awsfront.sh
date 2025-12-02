@@ -2,8 +2,17 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.9.2: Formato mejorado para listar distribuciones, incluyendo el Origen.
+# Versión 5.9.3: Formato mejorado, Origen en lista y Auto-Actualización.
 # ==============================================================
+
+# --- VARIABLES DE ACTUALIZACIÓN ---
+# ¡IMPORTANTE! Reemplaza estas URLs por las rutas RAW correctas en tu repositorio
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/heads/main/version.txt"
+REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/thefather12/WS-EPRO/refs/heads/main/awsfront.sh"
+# Ubicación local del script (asegura que $0 tiene el path completo)
+LOCAL_SCRIPT_PATH="$(realpath "$0")"
+# Versión del script (debe coincidir con el contenido del archivo version.txt remoto)
+CURRENT_VERSION="5.9.3" 
 
 # --- VARIABLES GLOBALES ---
 AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
@@ -439,7 +448,64 @@ eliminar_distribucion() {
     fi
 }
 
-# 6. Remover el Panel (Script) (Sin cambios)
+# 6. Función para auto-actualizar el script (NUEVA FUNCIÓN)
+actualizar_script() {
+    echo "========================================="
+    echo " ⬆️ Buscando Actualizaciones de Script (v$CURRENT_VERSION)"
+    echo "========================================="
+
+    # 1. Obtener la versión remota
+    REMOTE_VERSION=$(curl -s "$REMOTE_VERSION_URL")
+    
+    if [ $? -ne 0 ]; then
+        echo "❌ Error al obtener la versión remota. Verifica la URL ($REMOTE_VERSION_URL)."
+        return 1
+    fi
+    
+    # Limpiar espacios en blanco por si acaso
+    REMOTE_VERSION=$(echo "$REMOTE_VERSION" | tr -d '[:space:]')
+    
+    # 2. Comparar versiones
+    if [ "$REMOTE_VERSION" = "$CURRENT_VERSION" ]; then
+        echo "✅ Ya tienes la versión más reciente: v$CURRENT_VERSION."
+        return 0
+    fi
+    
+    echo "🚨 ¡ACTUALIZACIÓN DISPONIBLE!"
+    echo "   Versión local: v$CURRENT_VERSION"
+    echo "   Versión remota: v$REMOTE_VERSION"
+    echo "-----------------------------------------"
+
+    read -p "¿Deseas actualizar el script ahora? (s/N): " CONFIRM
+
+    if [[ "$CONFIRM" =~ ^[sS]$ ]]; then
+        echo "Descargando nueva versión desde $REMOTE_SCRIPT_URL..."
+        
+        # 3. Descargar y reemplazar el script
+        if curl -s -o /tmp/awsfront_new.sh "$REMOTE_SCRIPT_URL"; then
+            # Asegurar permisos de ejecución
+            chmod +x /tmp/awsfront_new.sh
+            
+            # Reemplazar el script actual
+            if mv /tmp/awsfront_new.sh "$LOCAL_SCRIPT_PATH"; then
+                echo "🎉 **¡Actualización exitosa a v$REMOTE_VERSION!**"
+                echo "Por favor, reinicia el script para usar la nueva versión."
+                exit 0
+            else
+                echo "❌ Error al reemplazar el archivo. Verifica los permisos de '$LOCAL_SCRIPT_PATH'."
+                return 1
+            fi
+        else
+            echo "❌ Error de descarga. No se pudo obtener el nuevo script."
+            return 1
+        fi
+    else
+        echo "Actualización cancelada."
+    fi
+}
+
+
+# 7. Remover el Panel (Script) (Sin cambios)
 remover_panel() {
     echo "Eliminando el script '$0'..."
     rm -- "$0"
@@ -451,22 +517,23 @@ remover_panel() {
     fi
 }
 
-# 7. Función del menú principal
+# 8. Función del menú principal
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v5.9)"
+    echo " CloudFront VPS Administration Tool (v$CURRENT_VERSION)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General" # <-- FORMATO MEJORADO CON ORIGEN
+    echo "1. 📋 Listar Distribuciones y Estado General" 
     echo "2. 📊 Ver Estado Detallado (por ID)"
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
     echo "5. 🆕 Crear Nueva Distribución (Avanzado)"
     echo "-----------------------------------"
-    echo "--- CREDENCIALES MODIFICAR ---"
-    echo "6. 🔑 Agregar o Cambiar Credenciales AWS" # <-- Opcion de Credenciales Mantenida
+    echo "--- Configuración / Mantenimiento ---" 
+    echo "6. 🔑 Agregar o Cambiar Credenciales AWS" 
+    echo "7. 🔄 Buscar y Actualizar Script (v$CURRENT_VERSION)" # <-- NUEVA OPCIÓN
     echo "-----------------------------------"
     echo "9. ♻️ Remover este Panel (Script)"
     echo "0. 🚪 Salir del Script"
@@ -479,11 +546,12 @@ menu_principal() {
         3) toggle_distribucion ;;
         4) eliminar_distribucion ;;
         5) crear_distribucion ;;
-        6) configurar_aws_manual ;; # Llama a la función de configuración manual
+        6) configurar_aws_manual ;; 
+        7) actualizar_script ;; # <-- Llama a la nueva función de actualización
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
-    esac # <-- Corregido de 'esoc' a 'esac'
+    esac
     
     # Esta línea asegura que el script pausa antes de volver a dibujar el menú
     read -p "Presiona ENTER para continuar..."
