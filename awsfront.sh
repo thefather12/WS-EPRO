@@ -2,8 +2,7 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.7: CORRECCIÓN ROBUSTA: Se añade limpieza de espacios en blanco
-# a la variable 'Enabled' para asegurar que el estado ACTIVA/INACTIVA se muestre correctamente.
+# Versión 5.4: Base (v5.0) restaurada + Opción 6 para Configuración Manual de Credenciales.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -17,7 +16,7 @@ AWS_CLI=$(which aws 2>/dev/null)
 JQ_CLI=$(which jq 2>/dev/null)
 
 # ----------------------------------------------------------------------
-# FUNCIONES DE INSTALACIÓN Y CHEQUEO DE REQUISITOS (Sin cambios)
+# FUNCIONES DE INSTALACIÓN Y CHEQUEO DE REQUISITOS
 # ----------------------------------------------------------------------
 
 # Función para verificar si un comando existe
@@ -29,7 +28,7 @@ check_command() {
 export_aws_path() {
     if [[ ":$PATH:" != *":$AWS_BIN_PATH:"* ]]; then
         export PATH="$PATH:$AWS_BIN_PATH"
-        AWS_CLI=$(which aws 2>/dev/null)
+        AWS_CLI=$(which aws 2>/dev/null) # Re-evaluar la ruta de AWS CLI
     fi
 }
 
@@ -195,68 +194,20 @@ get_config_and_etag() {
     return 0
 }
 
-# 1. Listar distribuciones (CORREGIDA con limpieza de espacios)
+# 1. Listar distribuciones (Vuelve a la tabla simple)
 listar_distribuciones() {
     echo "--- Listado y Estado de Distribuciones de CloudFront ---"
     
-    # 1. Ejecutar el comando AWS CLI y procesar con JQ
-    local TEMP_LIST="/tmp/dist_list_$$.json"
-    
-    # Obtener lista completa de distribuciones en formato JSON
-    "$AWS_CLI" cloudfront list-distributions --output json > "$TEMP_LIST"
+    "$AWS_CLI" cloudfront list-distributions \
+        --query 'DistributionList.Items[*].{ID:Id,Domain:DomainName,Status:Status,Enabled:Enabled}' \
+        --output table
     
     if [ $? -ne 0 ]; then
-        echo "Error al listar. Verifica tus permisos IAM (Opción 6)."
-        rm -f "$TEMP_LIST"
-        return
+        echo "Error al listar. Verifica tus permisos IAM."
     fi
-    
-    # Usar jq para extraer los campos necesarios en formato TSV (tab separated values)
-    # Extraemos el booleano 'Enabled' como una cadena
-    local ITEMS_JSON=$("$JQ_CLI" -r '.DistributionList.Items[] | 
-        .Id + "\t" + 
-        .DomainName + "\t" + 
-        .Status + "\t" + 
-        (.DistributionConfig.Enabled | tostring) + "\t" + 
-        .DistributionConfig.PriceClass' "$TEMP_LIST") 
-
-    rm -f "$TEMP_LIST"
-
-    echo "=========================================================================="
-    echo "ID | DOMINIO | ESTADO | COBERTURA"
-    echo "=========================================================================="
-
-    # 2. Iterar sobre los resultados para formatear la salida
-    while IFS=$'\t' read -r ID DOMAIN STATUS ENABLED_RAW PRICE_CLASS; do
-        
-        # 3. CORRECCIÓN ROBUSTA: Eliminar **todos** los espacios en blanco, tabs y saltos de línea 
-        # alrededor de la cadena booleana para asegurar una comparación limpia.
-        # Esto soluciona el problema de que Bash no reconozca 'true' debido a caracteres invisibles.
-        ENABLED_STATUS=$(echo "$ENABLED_RAW" | tr -d '[:space:]')
-
-        if [ "$ENABLED_STATUS" == "true" ]; then
-            ACTIVE_STATUS="[✅ ACTIVA]"
-        else
-            ACTIVE_STATUS="[🚫 INACTIVA]"
-        fi
-        
-        # 4. Formatear la Clase de Precio (Cobertura Global)
-        # Reemplazar guiones bajos por espacios para una mejor presentación
-        COVERAGE_REGION="${PRICE_CLASS//_/ }" 
-
-        # 5. Imprimir la línea formateada
-        printf "%s\n" "ID: $ID"
-        printf "%s\n" "Dominio: $DOMAIN"
-        printf "%s %s\n" "Estado: $STATUS" "$ACTIVE_STATUS"
-        printf "%s\n" "Cobertura Global: $COVERAGE_REGION"
-        echo "--------------------------------------------------------------------------"
-        
-    done <<< "$ITEMS_JSON"
-    
-    echo "Listado completado."
 }
 
-# 2. Ver estado de distribución (Sin cambios)
+# 2. Ver estado de distribución (Vuelve al JSON simple)
 ver_estado_distribucion() {
     read -p "Introduce el ID de la Distribución: " DIST_ID
     
@@ -439,18 +390,18 @@ remover_panel() {
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v5.7)"
+    echo " CloudFront VPS Administration Tool (v5.4)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Corregida (Limpia espacios)
-    echo "2. 📊 Ver Estado Detallado (por ID)" 
+    echo "1. 📋 Listar Distribuciones y Estado General"
+    echo "2. 📊 Ver Estado Detallado (por ID)" # Simple JSON Output
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
     echo "5. 🆕 Crear Nueva Distribución (Avanzado)"
     echo "-----------------------------------"
     echo "--- Configuración ---"
-    echo "6. 🔑 Agregar o Cambiar Credenciales AWS"
+    echo "6. 🔑 Agregar o Cambiar Credenciales AWS" # <-- Opción crucial para solucionar el error
     echo "-----------------------------------"
     echo "9. ♻️ Remover este Panel (Script)"
     echo "0. 🚪 Salir del Script"
@@ -463,7 +414,7 @@ menu_principal() {
         3) toggle_distribucion ;;
         4) eliminar_distribucion ;;
         5) crear_distribucion ;;
-        6) configurar_aws_manual ;; 
+        6) configurar_aws_manual ;; # Llama a la función de configuración manual
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
