@@ -2,7 +2,8 @@
 
 # ==============================================================
 # SCRIPT UNIFICADO: INSTALACIÓN DE DEPENDENCIAS + ADMIN CLOUDFRONT
-# Versión 5.3: Opción 1 (Listar) modificada para replicar el formato y sub-menú de la imagen proporcionada.
+# Versión 5.5: Opción 1 (Listar) mejorada para mostrar estado ACTIVO/INACTIVO
+# y la Clase de Precio/Cobertura Global de la distribución.
 # ==============================================================
 
 # --- VARIABLES GLOBALES ---
@@ -19,8 +20,6 @@ JQ_CLI=$(which jq 2>/dev/null)
 # FUNCIONES DE INSTALACIÓN Y CHEQUEO DE REQUISITOS (Sin cambios)
 # ----------------------------------------------------------------------
 
-# [Funciones de instalación: check_command, export_aws_path, instalar_jq, instalar_aws_cli, configurar_aws, configuracion_inicial, descargar_json_config se mantienen sin cambios]
-
 # Función para verificar si un comando existe
 check_command() {
     command -v "$1" &> /dev/null
@@ -30,7 +29,7 @@ check_command() {
 export_aws_path() {
     if [[ ":$PATH:" != *":$AWS_BIN_PATH:"* ]]; then
         export PATH="$PATH:$AWS_BIN_PATH"
-        AWS_CLI=$(which aws 2>/dev/null)
+        AWS_CLI=$(which aws 2>/dev/null) # Re-evaluar la ruta de AWS CLI
     fi
 }
 
@@ -104,10 +103,10 @@ instalar_aws_cli() {
     fi
 }
 
-# Función para configurar credenciales AWS
-configurar_aws() {
+# Función para configurar credenciales AWS (para la Opción 6 - manual)
+configurar_aws_manual() {
     echo "======================================================"
-    echo "  -> Configuración de Credenciales de AWS (aws configure) "
+    echo "  -> Configuración de Credenciales de AWS (manual) "
     echo "======================================================"
     
     echo "Ingrese sus credenciales (Access Key ID y Secret Key)."
@@ -126,17 +125,16 @@ configurar_aws() {
 }
 
 # Función para la configuración inicial (solo para el primer inicio)
-configuracion_inicial() {
+configuracion_inicial_check() {
      # Comprobar si ya existen credenciales básicas para evitar la interrupción en el primer inicio
     if [ -f "$HOME/.aws/credentials" ] && grep -q '^\[default\]' "$HOME/.aws/credentials"; then
         echo "✅ Archivos de configuración/credenciales de AWS existentes. Omitiendo configuración inicial."
         return 0
     else
         echo "⚠️ No se detectaron credenciales de AWS. Se iniciará la configuración."
-        configurar_aws
+        configurar_aws_manual
     fi
 }
-
 
 # ----------------------------------------------------------------------
 # FUNCIÓN DE DESCARGA DE CONFIGURACIÓN JSON 
@@ -178,7 +176,6 @@ get_config_and_etag() {
     local DIST_ID=$1
     echo "Obteniendo configuración y ETag para $DIST_ID..."
     
-    # Se guarda el output completo para poder extraer más detalles
     "$AWS_CLI" cloudfront get-distribution --id "$DIST_ID" --output json > /tmp/temp_dist_info.json
     
     if [ $? -ne 0 ]; then
@@ -186,115 +183,89 @@ get_config_and_etag() {
         return 1
     fi
     
-    # Extraer el ETag
+    # Extraer el ETag y guardar solo DistributionConfig en el archivo de configuración
     export CURRENT_ETAG=$(cat /tmp/temp_dist_info.json | "$JQ_CLI" -r '.ETag')
-    # Guardar solo DistributionConfig para las funciones de modificación (toggle, delete)
     cat /tmp/temp_dist_info.json | "$JQ_CLI" '.Distribution.DistributionConfig' > "$CONFIG_FILE"
+    rm -f /tmp/temp_dist_info.json
     
     if [ -z "$CURRENT_ETAG" ]; then
         echo "Error: No se pudo obtener el ETag."
-        rm -f /tmp/temp_dist_info.json
         return 1
     fi
     return 0
 }
 
-# 1. Listar distribuciones (MODIFICADA para sub-menú)
+# 1. Listar distribuciones (MODIFICADA)
 listar_distribuciones() {
-    clear
-    echo "[INFO] Verificando permisos de CloudFront..."
+    echo "--- Listado y Estado de Distribuciones de CloudFront ---"
     
-    # Intento de verificar permisos (simulación de verificación)
-    if ! "$AWS_CLI" sts get-caller-identity > /dev/null 2>&1; then
-        echo "[ERROR] ❌ No se pudieron verificar los permisos de AWS. Abortando."
-        return
-    fi
-    echo "[SUCCESS] ✅ Permisos CloudFront verificados"
-
-    echo "[INFO] Buscando distribuciones CloudFront (servicio global)..."
-
+    # 1. Ejecutar el comando AWS CLI y procesar con JQ
     local TEMP_LIST="/tmp/dist_list_$$.json"
-    local DIST_COUNT=0
     
-    # Obtener lista completa de distribuciones
+    # Obtener lista completa de distribuciones en formato JSON
     "$AWS_CLI" cloudfront list-distributions --output json > "$TEMP_LIST"
     
     if [ $? -ne 0 ]; then
-        echo "[ERROR] ❌ Error al listar las distribuciones. Verifica tus permisos IAM."
+        echo "Error al listar. Verifica tus permisos IAM (Opción 6)."
         rm -f "$TEMP_LIST"
         return
     fi
+    
+    # Usar jq para extraer los campos necesarios en formato TSV (tab separated values)
+    local ITEMS_JSON=$("$JQ_CLI" -r '.DistributionList.Items[] | 
+        .Id + "\t" + 
+        .DomainName + "\t" + 
+        .Status + "\t" + 
+        (.DistributionConfig.Enabled | tostring) + "\t" + 
+        .DistributionConfig.PriceClass' "$TEMP_LIST")
 
-    DIST_COUNT=$("$JQ_CLI" '.DistributionList.Quantity' "$TEMP_LIST")
-    
-    echo "[SUCCESS] Se encontraron $DIST_COUNT distribuciones CloudFront en la cuenta"
-    
-    echo ""
-    echo "========================================"
-    echo " DISTRIBUCIONES CLOUDFRONT DISPONIBLES: "
-    echo "========================================"
-    
-    # Usar jq para iterar sobre los ítems y extraer los detalles
-    local ITEMS_JSON=$("$JQ_CLI" -r '.DistributionList.Items[] | .Id + "\t" + .DomainName + "\t" + .Status + "\t" + .DistributionConfig.Origins.Items[0].DomainName + "\t" + .DistributionConfig.Comment' "$TEMP_LIST")
-    
-    local i=1
-    declare -a DIST_IDS
-    
-    while IFS=$'\t' read -r ID DOMAIN STATUS ORIGIN COMMENT; do
-        DIST_IDS[i]=$ID
-        echo ""
-        echo "$i. $DOMAIN"
-        echo "🆔 ID: $ID"
-        echo "🌐 Estado: $STATUS"
-        echo "🌍 Origen: $ORIGIN"
-        echo "💬 Comentario: $COMMENT"
-        i=$((i+1))
+    rm -f "$TEMP_LIST"
+
+    echo "=========================================================================="
+    echo "ID | DOMINIO | ESTADO | COBERTURA"
+    echo "=========================================================================="
+
+    # 2. Iterar sobre los resultados para formatear la salida
+    while IFS=$'\t' read -r ID DOMAIN STATUS ENABLED PRICE_CLASS; do
+        
+        # 3. Formatear el estado Activo/Inactivo
+        if [ "$ENABLED" == "true" ]; then
+            ACTIVE_STATUS="[✅ ACTIVA]"
+        else
+            ACTIVE_STATUS="[🚫 INACTIVA]"
+        fi
+
+        # 4. Formatear la Clase de Precio (Cobertura Global)
+        # Reemplazar guiones bajos por espacios para una mejor presentación
+        COVERAGE_REGION="${PRICE_CLASS//_/ }" 
+
+        # 5. Imprimir la línea formateada
+        printf "%s\n" "ID: $ID"
+        printf "%s\n" "Dominio: $DOMAIN"
+        printf "%s %s\n" "Estado: $STATUS" "$ACTIVE_STATUS"
+        printf "%s\n" "Cobertura Global: $COVERAGE_REGION"
+        echo "--------------------------------------------------------------------------"
+        
     done <<< "$ITEMS_JSON"
     
-    rm -f "$TEMP_LIST"
-    
-    # --- Sub-Menú de Gestión ---
-    
-    echo ""
-    echo "OPCIONES DISPONIBLES:"
-    echo "1. ⚙️ Extraer configuración de una distribución"
-    echo "2. 🔙 Volver al menú anterior"
-    
-    read -p "Selecciona una opción (1-2): " SUB_OPCION
-    
-    case $SUB_OPCION in
-        1)
-            read -p "¿Qué número de distribución deseas gestionar?: " NUM_DIST
-            if [[ "$NUM_DIST" =~ ^[0-9]+$ ]] && [ "$NUM_DIST" -ge 1 ] && [ "$NUM_DIST" -lt "$i" ]; then
-                local SELECTED_ID="${DIST_IDS[$NUM_DIST]}"
-                echo "Seleccionaste: $SELECTED_ID"
-                
-                # Obtener ETag y Configuration (usando la función existente)
-                if get_config_and_etag "$SELECTED_ID"; then
-                    # Muestra la configuración completa y la guarda en un archivo fácil de encontrar
-                    FINAL_CONFIG_FILE="$HOME/cloudfront_config_${SELECTED_ID}.json"
-                    mv "$CONFIG_FILE" "$FINAL_CONFIG_FILE"
-                    echo "✅ Configuración extraída y guardada en: $FINAL_CONFIG_FILE"
-                    echo "Nota: Usa este archivo para la Opción 5 si deseas clonar la configuración."
-                fi
-            else
-                echo "Número de distribución no válido."
-            fi
-            ;;
-        2)
-            # Volver al menú principal (la función main_menu lo manejará)
-            return
-            ;;
-        *)
-            echo "Opción no válida."
-            ;;
-    esac
+    echo "Listado completado."
 }
 
-# 2. Ver estado de distribución (REMOVING OLD FUNCTIONALITY)
+# 2. Ver estado de distribución (Sin cambios)
 ver_estado_distribucion() {
-    echo "⛔ La funcionalidad de 'Ver Estado Detallado' ahora está integrada en la Opción 1 (Listar y Gestionar)."
-    echo "Por favor, usa la Opción 1 para ver el listado completo de distribuciones."
+    read -p "Introduce el ID de la Distribución: " DIST_ID
+    
+    if get_config_and_etag "$DIST_ID"; then
+        echo "--- Estado de la Distribución $DIST_ID ---"
+        # Usamos jq para mostrar datos clave
+        cat "$CONFIG_FILE" | "$JQ_CLI" '{
+            ID: "'"$DIST_ID"'", 
+            Domain: .Aliases.Items[0], 
+            Status: .Status, 
+            Enabled: .Enabled, 
+            Origin: .Origins.Items[0].DomainName
+        }'
+    fi
 }
 
 # 3. Crear una distribución (Sin cambios)
@@ -459,15 +430,15 @@ remover_panel() {
     fi
 }
 
-# 7. Función del menú principal (Con Opción 6 para credenciales)
+# 7. Función del menú principal
 menu_principal() {
     clear
     echo "========================================="
-    echo " CloudFront VPS Administration Tool (v5.3)"
+    echo " CloudFront VPS Administration Tool (v5.5)"
     echo "========================================="
     echo "--- Administrar Distribuciones ---"
-    echo "1. 📋 LISTA Y GESTIÓN DE DISTRIBUCIONES CLOUDFRONT" # <-- MODIFICADA
-    echo "2. ❌ Funcionalidad integrada en Opción 1" 
+    echo "1. 📋 Listar Distribuciones y Estado General" # <-- Mejorada
+    echo "2. 📊 Ver Estado Detallado (por ID)" 
     echo "3. 📵 Activar/Desactivar Distribución (Toggle Enabled)"
     echo "4. 🗑️ Eliminar Distribución (Requiere estar Desactivada)"
     echo "-----------------------------------"
@@ -483,11 +454,11 @@ menu_principal() {
     
     case $OPCION in
         1) listar_distribuciones ;;
-        2) ver_estado_distribucion ;; # Muestra mensaje de ayuda
+        2) ver_estado_distribucion ;;
         3) toggle_distribucion ;;
         4) eliminar_distribucion ;;
         5) crear_distribucion ;;
-        6) configurar_aws ;;
+        6) configurar_aws_manual ;; 
         9) remover_panel ;;
         0) echo "Saliendo del script. ¡Adiós!"; exit 0 ;;
         *) echo "Opción no válida. Inténtalo de nuevo." ;;
@@ -521,7 +492,7 @@ start_script() {
     fi
 
     # 3. Configuración Inicial (solo si no existen credenciales)
-    configuracion_inicial
+    configuracion_inicial_check
     
     # 4. Descargar el archivo JSON de configuración
     descargar_json_config 
