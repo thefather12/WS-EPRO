@@ -34,15 +34,17 @@ echo "# verbose level 0=info, 1=verbose, 2=very verbose" >> /usr/local/etc/ws-ep
 echo "verbose: 0" >> /usr/local/etc/ws-epro/config.yml
 echo "listen:"  >> /usr/local/etc/ws-epro/config.yml
 
-#seting port
-echo "##openssh" >> /usr/local/etc/ws-epro/config.yml
+# --- INICIO DE LA CORRECCIÓN ---
+# Genera el bloque de escucha YAML de forma correcta para que el binario lo interprete.
+
+echo "##openssh configuration block" >> /usr/local/etc/ws-epro/config.yml
 echo "- target_host: 127.0.0.1" >> /usr/local/etc/ws-epro/config.yml
-echo "##portopenssh" >> /usr/local/etc/ws-epro/config.yml
 echo "  target_port: $openssh" >> /usr/local/etc/ws-epro/config.yml
-echo "##wsopenssh" >> /usr/local/etc/ws-epro/config.yml
 echo "  listen_port: $wsopenssh" >> /usr/local/etc/ws-epro/config.yml
 
-chmod +x /usr/local/etc/ws-epro/config.yml
+# Establece permisos de lectura/escritura (no de ejecución)
+chmod 644 /usr/local/etc/ws-epro/config.yml
+# --- FIN DE LA CORRECCIÓN ---
 
 #Enable & Start service
 systemctl enable ws-epro
