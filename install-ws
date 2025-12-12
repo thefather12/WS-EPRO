@@ -1,11 +1,14 @@
 #!/bin/bash
 clear
 echo -e "\033[1;36m========================================================\033[0m"
-echo -e "\033[1;33m INICIANDO INSTALACIÓN DE WS-EPRO (VERSIÓN MEJORADA) \033[0m"
+echo -e "\033[1;33m INICIANDO INSTALACIÓN Y CORRECCIÓN DE WS-EPRO \033[0m"
 echo -e "\033[1;36m========================================================\033[0m"
 sleep 1
 
+# ==========================================================
 # 1. LIMPIEZA Y PREPARACIÓN
+# ==========================================================
+echo -e "\033[1;33m\n[ WS-EPRO ] Limpiando configuraciones anteriores...\033[0m"
 pkill -f ws-epro
 systemctl stop ws-epro >/dev/null 2>&1
 systemctl disable ws-epro >/dev/null 2>&1
@@ -14,7 +17,11 @@ rm -rf /usr/local/etc/ws-epro
 mkdir -p /usr/local/etc/ws-epro
 cd
 
-# 2. DESCARGA DE BINARIOS (Se asume que estas URLs funcionan para el binario y el helper)
+# ==========================================================
+# 2. DESCARGA DE BINARIOS
+# ==========================================================
+# Nota: Se mantienen las URLs de Google Drive que confirmaste que funcionan para descargar los binarios.
+
 echo -e "\033[1;32m-> 1/3 Descargando binario ws-epro...\033[0m"
 wget -q --show-progress --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1IbwfNpKpa1JzvXsDT-WgNpp5nWrklisG' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1IbwfNpKpa1JzvXsDT-WgNpp5nWrklisG" -O /usr/local/bin/ws-epro && rm -rf /tmp/cookies.txt
 chmod +x /usr/local/bin/ws-epro
@@ -23,9 +30,11 @@ echo -e "\033[1;32m-> 2/3 Descargando script auxiliar ws-port...\033[0m"
 wget -q --show-progress --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1h9QvOnXScplGTnfpbJ7KJDn4CDkwUKWa' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1h9QvOnXScplGTnfpbJ7KJDn4CDkwUKWa" -O /usr/bin/ws-port && rm -rf /tmp/cookies.txt
 chmod +x /usr/bin/ws-port
 
-# 3. CREACIÓN DEL ARCHIVO DE SERVICIO (¡CORRECCIÓN VITAL!)
-echo -e "\033[1;32m-> 3/3 Creando archivo de servicio systemd (ws-epro.service)...\033[0m"
-# Eliminamos la descarga y creamos el archivo con sintaxis limpia para evitar el error 'bad-setting'
+# ==========================================================
+# 3. CREACIÓN DEL ARCHIVO DE SERVICIO (CORRECCIÓN VITAL)
+# ==========================================================
+echo -e "\033[1;32m-> 3/3 Creando ws-epro.service (corregido)...\033[0m"
+# Creamos el archivo de servicio localmente para evitar la corrupción de la descarga.
 rm -f /etc/systemd/system/ws-epro.service
 
 cat > /etc/systemd/system/ws-epro.service << EOL
@@ -36,7 +45,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/usr/local/etc/ws-epro
-ExecStart=/usr/local/bin/ws-epro -c /usr/local/etc/ws-epro/config.yml
+ExecStart=/usr/local/bin/ws-epro -f /usr/local/etc/ws-epro/config.yml  # CORREGIDO: Usando -f
 Restart=always
 StandardOutput=syslog
 StandardError=syslog
@@ -47,41 +56,44 @@ WantedBy=multi-user.target
 EOL
 chmod 644 /etc/systemd/system/ws-epro.service
 
-
-# 4. SOLICITUD DE PUERTOS
+# ==========================================================
+# 4. CONFIGURACIÓN DE PUERTOS Y YAML
+# ==========================================================
 clear
 echo -e "\033[1;36m=========================================\033[0m"
-echo -e "\033[1;33m CONFIGURACIÓN DE PUERTOS \033[0m"
+echo -e "\033[1;33m CONFIGURACIÓN DE PUERTOS WS-EPRO \033[0m"
 echo -e "\033[1;36m=========================================\033[0m"
-read -p "PUERTO LOCAL SSH (ej. 22, 444, 8000): " openssh
-read -p "PUERTO WEBSOCKET (ej. 80, 8080, 443): " wsopenssh
+read -p "PUERTO LOCAL SSH (target_port, ej. 22, 444): " openssh
+read -p "PUERTO WEBSOCKET (listen_port, ej. 80, 443): " wsopenssh
 echo "CONFIGURANDO SERVIDOR ESPERE..."
 sleep 0.5
 
-
-# 5. GENERACIÓN DEL ARCHIVO YAML (¡CORRECCIÓN DE INDENTACIÓN!)
+# Generación del Archivo YAML (CORRECCIÓN DE INDENTACIÓN)
 echo -e "\033[1;32m-> Generando config.yml con sintaxis YAML correcta...\033[0m"
 echo "# verbose level 0=info, 1=verbose, 2=very verbose" > /usr/local/etc/ws-epro/config.yml
 echo "verbose: 0" >> /usr/local/etc/ws-epro/config.yml
 echo "listen:"  >> /usr/local/etc/ws-epro/config.yml
 echo "- target_host: 127.0.0.1" >> /usr/local/etc/ws-epro/config.yml 
-echo "  target_port: $openssh" >> /usr/local/etc/ws-epro/config.yml  # <- Indentación de 2 espacios
-echo "  listen_port: $wsopenssh" >> /usr/local/etc/ws-epro/config.yml # <- Indentación de 2 espacios
+echo "  target_port: $openssh" >> /usr/local/etc/ws-epro/config.yml 
+echo "  listen_port: $wsopenssh" >> /usr/local/etc/ws-epro/config.yml
 chmod 644 /usr/local/etc/ws-epro/config.yml
 
-
-# 6. HABILITAR E INICIAR SERVICIO
-echo -e "\033[1;32m-> Habilitando e iniciando servicio...\033[0m"
+# ==========================================================
+# 5. HABILITAR E INICIAR SERVICIO
+# ==========================================================
+echo -e "\033[1;32m-> Habilitando e iniciando ws-epro...\033[0m"
 systemctl daemon-reload
 systemctl enable ws-epro >/dev/null 2>&1
 systemctl start ws-epro
 
 
-# 7. SALIDA Y VERIFICACIÓN
+# ==========================================================
+# 6. RESULTADOS FINALES Y VERIFICACIÓN
+# ==========================================================
 sleep 1
 clear
 LP='\033[1;35m'
-NC='\033[0m' # No Color
+NC='\033[0m' 
 echo -e "${LP}"
 echo    "
 ░██╗░░░░░░░██╗░██████╗░░░░░░██████╗░██████╗░░█████╗░
@@ -91,8 +103,7 @@ echo    "
 ░░╚██╔╝░╚██╔╝░██████╔╝░░░░░░██║░░░░░██║░░██║╚█████╔╝
 ░░░╚═╝░░░╚═╝░░╚═════╝░░░░░░░╚═╝░░░░░╚═╝░░╚═╝░╚════╝░"
 
-echo    "💙SCRIPT WEBSOCKET CLOUDFLARE SIN PRO E-PRO💙"
-echo    "Creditos A : @THEFATHER12"
+echo    "💙SCRIPT WEBSOCKET CLOUDFLARE SIN PRO E-PRO INSTALADO CON ÉXITO💙"
 echo    "════💙🧑🏽‍💻EDITADO POR THEFATHER12🧑🏽‍💻💙════"
 echo    "╔════════════════════╗"
 echo -e "   Puerto Local SSH: \033[1;33m$openssh\033[1;35m"
@@ -102,11 +113,10 @@ echo    ""
 echo -e "\033[1;32m--- VERIFICACIÓN DEL ESTADO DEL SERVICIO ---\033[0m"
 systemctl status ws-epro | grep "Active:"
 echo    "---------------------------------------"
-echo    "WEBSOCKET SIN SER PLAN PRO CLOUDFLARE"
-echo    "PARA CAMBIAR DE PUERTO USE COMANDO: ws-port"
-echo    "---------------------------------------"
+echo    "Para cambiar de puerto use el comando: ws-port"
 echo -e "${NC}"
 
+# Limpieza de historial y terminación del script
 rm -rf install-ws && cat /dev/null > ~/.bash_history && history -c
-echo -ne "\n\033[1;31mENTER \033[1;33mpara entrar al \033[1;32mMENU!\033[0m"; read
-menu # Se asume que esta función existe en tu entorno de shell
+echo -ne "\n\033[1;31mFINALIZADO!\033[0m\n"
+
