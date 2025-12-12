@@ -5,19 +5,19 @@ echo INSTALANDO PHYTON NUEVO
 sleep 1
 cd
 
-#Install ws-epro
+# Install ws-epro binary
 wget -q --show-progress --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1IbwfNpKpa1JzvXsDT-WgNpp5nWrklisG' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1IbwfNpKpa1JzvXsDT-WgNpp5nWrklisG" -O /usr/local/bin/ws-epro && rm -rf /tmp/cookies.txt
 chmod +x /usr/local/bin/ws-epro
 
-#ws-epro service
+# ws-epro service (Se mantiene la descarga original, pero si falla, se corregirá manualmente luego)
 wget -q --show-progress --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=10hGKYNZUMHdr4y-ZxMr0wKQpj9zSQRkZ' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=10hGKYNZUMHdr4y-ZxMr0wKQpj9zSQRkZ" -O /etc/systemd/system/ws-epro.service && rm -rf /tmp/cookies.txt
 chmod +x /etc/systemd/system/ws-epro.service
 
-#ws-epro port
+# ws-epro port helper
 wget -q --show-progress --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1h9QvOnXScplGTnfpbJ7KJDn4CDkwUKWa' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1h9QvOnXScplGTnfpbJ7KJDn4CDkwUKWa" -O /usr/bin/ws-port && rm -rf /tmp/cookies.txt
 chmod +x /usr/bin/ws-port
 
-#seting port
+# seting port
 clear
 echo SELECCIONE PUERTOS
 sleep 1
@@ -30,21 +30,22 @@ fi
 mkdir "$WS_DIR"
 echo "CONFIGURANDO SERVIDOR ESPERE..."
 sleep 0.5
-echo "# verbose level 0=info, 1=verbose, 2=very verbose" >> /usr/local/etc/ws-epro/config.yml
+echo "# verbose level 0=info, 1=verbose, 2=very verbose" > /usr/local/etc/ws-epro/config.yml
 echo "verbose: 0" >> /usr/local/etc/ws-epro/config.yml
 echo "listen:"  >> /usr/local/etc/ws-epro/config.yml
 
-# --- INICIO DE LA CORRECCIÓN FINAL (con indentación YAML correcta) ---
+# --- INICIO DE LA CORRECCIÓN DE SINTAXIS YAML ---
 echo "##openssh configuration block" >> /usr/local/etc/ws-epro/config.yml
-echo "- target_host: 127.0.0.1" >> /usr/local/etc/ws-epro/config.yml
-echo "  target_port: $openssh" >> /usr/local/etc/ws-epro/config.yml  # <-- Indentado
-echo "  listen_port: $wsopenssh" >> /usr/local/etc/ws-epro/config.yml # <-- Indentado
+echo "- target_host: 127.0.0.1" >> /usr/local/etc/ws-epro/config.yml # <- Sin indentación
+echo "  target_port: $openssh" >> /usr/local/etc/ws-epro/config.yml  # <- Con dos espacios de indentación
+echo "  listen_port: $wsopenssh" >> /usr/local/etc/ws-epro/config.yml # <- Con dos espacios de indentación
 
-# Establece permisos de lectura/escritura (no de ejecución)
+# Permisos correctos para un archivo de configuración (lectura/escritura, no ejecución)
 chmod 644 /usr/local/etc/ws-epro/config.yml
-# --- FIN DE LA CORRECCIÓN FINAL ---
+# --- FIN DE LA CORRECCIÓN ---
 
-#Enable & Start service
+# Ejecuta los comandos de systemd (puede fallar si el archivo .service está mal, pero es necesario intentarlo)
+systemctl daemon-reload # Recarga la configuración del servicio (importante si lo editamos manualmente antes)
 systemctl enable ws-epro
 systemctl start ws-epro
 
